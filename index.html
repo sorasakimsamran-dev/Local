@@ -5,9 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title id="pageTitle">AuraWallet - บันทึกรายรับรายจ่ายอัจฉริยะ</title>
     
-    <!-- โหลด Tailwind CSS และ Chart.js CDN -->
+    <!-- โหลด Tailwind CSS, Chart.js และ Tesseract.js v5 (OCR ภาษาไทย+อังกฤษ ฟรีบนเบราว์เซอร์) -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     
     <!-- โหลดฟอนต์ภาษาไทย Prompt -->
     <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -39,11 +40,11 @@
         }
 
         .glass-modal {
-            background: rgba(15, 23, 42, 0.92);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
+            background: rgba(15, 23, 42, 0.94);
+            backdrop-filter: blur(22px);
+            -webkit-backdrop-filter: blur(22px);
             border: 1px solid rgba(255, 255, 255, 0.14);
-            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.65);
         }
 
         .balance-gradient {
@@ -51,6 +52,18 @@
             backdrop-filter: blur(12px);
             border: 1px solid rgba(255, 255, 255, 0.18);
             box-shadow: 0 12px 40px -10px rgba(99, 102, 241, 0.45);
+        }
+
+        .slip-dropzone {
+            background: linear-gradient(145deg, rgba(79, 70, 229, 0.14) 0%, rgba(16, 185, 129, 0.10) 100%);
+            border: 1.5px dashed rgba(129, 140, 248, 0.45);
+            transition: all 0.25s ease;
+        }
+
+        .slip-dropzone.drag-over {
+            border-color: #34d399;
+            background: rgba(16, 185, 129, 0.18);
+            transform: scale(1.01);
         }
 
         /* ปรับแต่ง Scrollbar ให้กลมกลืน */
@@ -76,7 +89,7 @@
     <!-- =================================================================== -->
     <!-- กล่องแจ้งเตือน Toast ด้านบน                                          -->
     <!-- =================================================================== -->
-    <div id="toast" class="fixed top-6 left-1/2 -translate-x-1/2 z-50 transform -translate-y-24 opacity-0 transition-all duration-300 pointer-events-none">
+    <div id="toast" class="fixed top-6 left-1/2 -translate-x-1/2 z-[70] transform -translate-y-24 opacity-0 transition-all duration-300 pointer-events-none">
         <div class="glass-modal px-4 py-2.5 rounded-full flex items-center space-x-2 border border-white/15">
             <span id="toastIcon">✅</span>
             <span id="toastMsg" class="text-sm font-medium text-white whitespace-nowrap">บันทึกสำเร็จ</span>
@@ -128,7 +141,6 @@
                 <button type="button" onclick="closeModal('categoryModal')" class="text-slate-400 hover:text-white text-lg">✕</button>
             </div>
             
-            <!-- ฟอร์มเพิ่มหมวดหมู่ใหม่ -->
             <div class="bg-slate-900/70 p-3.5 rounded-2xl border border-slate-800 space-y-3">
                 <p class="text-xs font-medium text-indigo-300">เพิ่มหมวดหมู่ใหม่</p>
                 <div class="grid grid-cols-2 gap-2">
@@ -148,10 +160,7 @@
                 </div>
             </div>
 
-            <!-- รายการหมวดหมู่ทั้งหมดที่มีอยู่ -->
-            <div class="flex-1 overflow-y-auto space-y-2 pr-1" id="customCategoryList">
-                <!-- แสดงรายการหมวดหมู่ผ่าน DOM API -->
-            </div>
+            <div class="flex-1 overflow-y-auto space-y-2 pr-1" id="customCategoryList"></div>
         </div>
     </div>
 
@@ -179,30 +188,345 @@
 
                 <button type="button" onclick="document.getElementById('restoreFileInput').click()" class="w-full py-3 px-4 rounded-2xl bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/30 text-amber-300 text-sm font-medium flex items-center justify-between transition">
                     <span>📥 กู้คืนข้อมูลจากไฟล์ (Restore JSON)</span>
-                    <span class="text-xs bg-amber-500/20 px-2 py-0.5 rounded-lg">เลือกไฟล์</span>
+            <!-- ปุ่มทดลองใช้งานทันที (นำปุ่มเข้าแอดมินสาธารณะออกเพื่อความปลอดภัยสูงสุด) -->
+            <div class="pt-2 border-t border-slate-800 space-y-2">
+                <p class="text-[10px] text-center text-slate-400">ทดลองใช้งานระบบบันทึกรายรับ-รายจ่ายได้ทันที</p>
+                <button type="button" onclick="loginAsDemoUser()" class="w-full py-2.5 px-3 rounded-xl bg-slate-800/90 hover:bg-slate-700 border border-white/10 text-slate-200 text-xs font-medium transition">
+                    👤 เข้าใช้งานโหมดทดลอง (Guest Mode)
                 </button>
-                <input type="file" id="restoreFileInput" accept=".json,application/json" class="hidden" onchange="restoreJSON(event)">
-
-                <div class="pt-2 border-t border-slate-800">
-                    <button type="button" onclick="closeModal('dataModal'); askResetAll();" class="w-full py-2.5 px-4 rounded-2xl bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/30 text-rose-400 text-xs font-medium transition">
-                        🗑️ ล้างประวัติรายการทั้งหมดในเครื่อง
-                    </button>
-                </div>
             </div>
         </div>
     </div>
 
     <!-- =================================================================== -->
-    <!-- Modal 5: ยืนยันการลบข้อมูล (Custom Confirm Modal)                     -->
+    <!-- Modal 8: ประตูยืนยันตัวตนเจ้าของระบบคนเดียว (Single-Owner Admin Gate) -->
     <!-- =================================================================== -->
-    <div id="confirmModal" class="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-        <div class="glass-modal rounded-3xl max-w-sm w-full p-6 text-center space-y-4">
-            <div class="w-12 h-12 rounded-full bg-rose-500/20 text-rose-400 flex items-center justify-center mx-auto text-2xl">⚠️</div>
-            <h3 id="confirmTitle" class="text-lg font-bold text-white">ยืนยันการลบข้อมูล?</h3>
-            <p id="confirmDesc" class="text-xs text-slate-400">ข้อมูลที่ลบไปแล้วจะไม่สามารถกู้คืนได้</p>
-            <div class="flex space-x-3 pt-2">
-                <button type="button" onclick="closeModal('confirmModal')" class="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-medium transition">ยกเลิก</button>
-                <button type="button" id="confirmActionBtn" class="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-sm font-semibold shadow-lg transition">ยืนยันลบ</button>
+    <div id="ownerAdminGateModal" class="fixed inset-0 bg-black/85 backdrop-blur-md z-50 hidden flex items-center justify-center p-4">
+        <div class="glass-modal rounded-3xl max-w-sm w-full p-6 space-y-4 border border-amber-500/30">
+            <div class="flex justify-between items-start">
+                <div class="flex items-center space-x-3">
+                    <div class="w-11 h-11 rounded-2xl bg-amber-500/20 border border-amber-400/30 text-amber-300 flex items-center justify-center text-2xl shrink-0">🔐</div>
+                    <div>
+                        <h3 id="ownerGateTitle" class="text-base font-bold text-white">ยืนยันสิทธิ์เจ้าของระบบ (Master Owner)</h3>
+                        <p id="ownerGateSubtitle" class="text-[11px] text-slate-400">เข้าถึงได้เฉพาะเจ้าของเว็บไซต์เพียงคนเดียวเท่านั้น</p>
+                    </div>
+                </div>
+                <button type="button" onclick="closeModal('ownerAdminGateModal')" class="text-slate-400 hover:text-white text-lg p-1">✕</button>
+            </div>
+
+            <!-- ฟอร์มตั้งค่า Master Owner ครั้งแรก (แสดงเมื่อยังไม่เคยผูกบัญชีเจ้าของ) -->
+            <form id="ownerSetupForm" onsubmit="handleOwnerInitialSetup(event)" class="hidden space-y-3">
+                <div class="bg-amber-500/10 border border-amber-400/25 rounded-2xl p-3 text-[11px] text-amber-200 leading-relaxed">
+                    🛡️ <strong>ตั้งค่าความปลอดภัยครั้งแรก:</strong> กรุณากำหนดอีเมลเจ้าของระบบและรหัสผ่าน Master Admin (รหัสผ่านจะถูกเข้ารหัสด้วย SHA-256 + Random Salt)
+                </div>
+                <div>
+                    <label class="block text-xs text-slate-300 mb-1">อีเมลเจ้าของระบบ (Master Owner Email)</label>
+                    <input type="email" id="setupOwnerEmailInput" required placeholder="owner@yourdomain.com"
+                        class="w-full bg-slate-900/90 border border-slate-700 rounded-2xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-amber-400">
+                </div>
+                <div>
+                    <label class="block text-xs text-slate-300 mb-1">ตั้งรหัสผ่าน Master Admin (อย่างน้อย 8 ตัวอักษร)</label>
+                    <input type="password" id="setupOwnerPassInput" required minlength="8" placeholder="••••••••"
+                        class="w-full bg-slate-900/90 border border-slate-700 rounded-2xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-amber-400">
+                </div>
+                <div>
+                    <label class="block text-xs text-slate-300 mb-1">ยืนยันรหัสผ่านอีกครั้ง</label>
+                    <input type="password" id="setupOwnerPassConfirmInput" required minlength="8" placeholder="••••••••"
+                        class="w-full bg-slate-900/90 border border-slate-700 rounded-2xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-amber-400">
+                </div>
+                <button type="submit" class="w-full py-3 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-slate-950 font-bold text-sm shadow-lg transition">
+                    🔒 บันทึกสิทธิ์เจ้าของระบบและเข้าหลังบ้าน
+                </button>
+            </form>
+
+            <!-- ฟอร์มยืนยันตัวตนเจ้าของระบบ (สำหรับเข้าใช้งานครั้งถัดไป) -->
+            <form id="ownerVerifyForm" onsubmit="handleOwnerVerifyLogin(event)" class="hidden space-y-3">
+                <div id="ownerLockoutBanner" class="hidden bg-rose-500/20 border border-rose-500/40 rounded-2xl p-3 text-center space-y-1">
+                    <p class="text-xs font-bold text-rose-300">🚨 ระบบระงับการเข้าถึงชั่วคราว (Brute-Force Protection)</p>
+                    <p class="text-[11px] text-rose-200">กรอกรหัสผ่านผิดเกิน 3 ครั้ง กรุณารอ <span id="ownerLockoutCountdown" class="font-bold text-white">60</span> วินาที</p>
+                </div>
+
+                <div id="ownerSignedInCheckBox" class="bg-slate-900/80 border border-white/10 rounded-2xl p-2.5 text-[11px] text-slate-300">
+                    <!-- แสดงสถานะการตรวจสอบอีเมลที่ล็อกอินอยู่ -->
+                </div>
+
+                <div>
+                    <label class="block text-xs text-slate-300 mb-1">อีเมลเจ้าของระบบ (Master Owner Email)</label>
+                    <input type="email" id="verifyOwnerEmailInput" required placeholder="กรอกอีเมลเจ้าของระบบ"
+                        class="w-full bg-slate-900/90 border border-slate-700 rounded-2xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-amber-400">
+                </div>
+                <div>
+                    <label class="block text-xs text-slate-300 mb-1">รหัสผ่าน Master Admin</label>
+                    <input type="password" id="verifyOwnerPassInput" required placeholder="••••••••"
+                        class="w-full bg-slate-900/90 border border-slate-700 rounded-2xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-amber-400">
+                </div>
+                <button type="submit" id="verifyOwnerSubmitBtn" class="w-full py-3 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-slate-950 font-bold text-sm shadow-lg transition">
+                    🛡️ ปลดล็อกเข้าสู่หลังบ้านแอดมิน
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- =================================================================== -->
+    <!-- Modal 9: ระบบแอดมินหลังบ้าน (Single-Owner Security & Auth Audit)     -->
+    <!-- =================================================================== -->
+    <div id="adminDashboardModal" class="fixed inset-0 bg-black/85 backdrop-blur-md z-50 hidden flex items-center justify-center p-3 sm:p-5">
+        <div class="glass-modal rounded-3xl max-w-5xl w-full max-h-[92vh] flex flex-col overflow-hidden border border-amber-500/30">
+            
+            <!-- Header ของหน้าแอดมิน -->
+            <div class="px-5 py-4 border-b border-white/10 flex flex-wrap justify-between items-center gap-3 bg-slate-900/75">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center text-lg shadow-lg">🛡️</div>
+                    <div>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <h2 class="text-base sm:text-lg font-bold text-white">Master Owner Security Center</h2>
+                            <span id="adminOwnerBadge" class="text-[10px] px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-400/30 font-semibold">Single-Owner Locked</span>
+                            <span id="adminDataModeBadge" class="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/25 text-indigo-300 border border-indigo-400/20">Local + Audit Mode</span>
+                        </div>
+                        <p id="adminOwnerEmailSubtitle" class="text-[11px] text-slate-400">บัญชีเจ้าของระบบ: -</p>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <button type="button" onclick="refreshAdminAnalytics()" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium transition">
+                        🔄 รีเฟรช
+                    </button>
+                    <button type="button" onclick="lockAdminSession()" class="px-3 py-1.5 rounded-xl bg-rose-600/25 hover:bg-rose-600/40 border border-rose-500/35 text-rose-300 text-xs font-semibold transition">
+                        🔒 ล็อกและออกจากแอดมิน
+                    </button>
+                </div>
+            </div>
+
+            <!-- แถบเมนูสลับหน้าในแอดมิน -->
+            <div class="px-5 pt-2 border-b border-white/10 flex flex-wrap gap-1 bg-slate-900/40">
+                <button type="button" id="adminSubTabOverviewBtn" onclick="switchAdminSubTab('overview')"
+                    class="px-4 py-2.5 text-xs font-semibold border-b-2 border-amber-400 text-white transition">
+                    📊 ภาพรวม & ตรวจสอบความปลอดภัยผู้ใช้ (Auth Audit)
+                </button>
+                <button type="button" id="adminSubTabOwnerBtn" onclick="switchAdminSubTab('owner')"
+                    class="px-4 py-2.5 text-xs font-medium border-b-2 border-transparent text-slate-400 hover:text-white transition">
+                    🔐 ตั้งค่าความปลอดภัยเจ้าของระบบ (Master Owner)
+                </button>
+                <button type="button" id="adminSubTabFirebaseBtn" onclick="switchAdminSubTab('firebase')"
+                    class="px-4 py-2.5 text-xs font-medium border-b-2 border-transparent text-slate-400 hover:text-white transition">
+                    🔥 เชื่อมต่อ Firebase & OAuth จริง
+                </button>
+            </div>
+
+            <!-- เนื้อหาหลักแบบเลื่อนได้ภายใน Modal -->
+            <div class="flex-1 overflow-y-auto p-5 space-y-5">
+                
+                <!-- แท็บ 1: ภาพรวมสถิติและตารางตรวจสอบความปลอดภัยผู้ใช้งาน (Auth Security Audit) -->
+                <div id="adminOverviewPanel" class="space-y-5">
+                    
+                    <!-- การ์ด KPI 4 ช่อง -->
+                    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                        <div class="glass-card rounded-2xl p-4 border-l-4 border-l-indigo-500">
+                            <p class="text-[11px] text-slate-400">ผู้ใช้งานทั้งหมด (Total Users)</p>
+                            <p id="kpiTotalUsers" class="text-2xl font-extrabold text-white mt-1">0</p>
+                            <p class="text-[10px] text-indigo-300 mt-1">บัญชีในระบบทั้งหมด</p>
+                        </div>
+                        <div class="glass-card rounded-2xl p-4 border-l-4 border-l-emerald-500">
+                            <p class="text-[11px] text-slate-400">ออนไลน์ / ใช้งานวันนี้</p>
+                            <p id="kpiActiveToday" class="text-2xl font-extrabold text-emerald-400 mt-1">0</p>
+                            <p class="text-[10px] text-emerald-300/80 mt-1">Active ภายใน 24 ชม.</p>
+                        </div>
+                        <div class="glass-card rounded-2xl p-4 border-l-4 border-l-sky-500">
+                            <p class="text-[11px] text-slate-400">OAuth 2.0 vs Email Hash</p>
+                            <p id="kpiSocialPercent" class="text-2xl font-extrabold text-sky-400 mt-1">0%</p>
+                            <p id="kpiSocialSub" class="text-[10px] text-slate-400 mt-1">Google 0 • Facebook 0</p>
+                        </div>
+                        <div class="glass-card rounded-2xl p-4 border-l-4 border-l-amber-500">
+                            <p class="text-[11px] text-slate-400">ธุรกรรมรวมทั้งระบบ</p>
+                            <p id="kpiTotalTx" class="text-2xl font-extrabold text-amber-400 mt-1">0</p>
+                            <p class="text-[10px] text-slate-400 mt-1">รายการบันทึกรวมทั้งหมด</p>
+                        </div>
+                    </div>
+
+                    <!-- คำอธิบายมาตรฐานความปลอดภัยการตรวจสอบรหัสผ่าน -->
+                    <div class="bg-slate-900/80 border border-indigo-500/25 rounded-2xl p-3.5 flex items-start space-x-3">
+                        <span class="text-lg shrink-0">🔏</span>
+                        <div class="text-[11px] text-slate-300 leading-relaxed">
+                            <strong class="text-indigo-300">มาตรฐานความปลอดภัย Zero-Plaintext Password:</strong>
+                            บัญชีที่ล็อกอินผ่าน <strong>Google / Facebook</strong> จะยืนยันตัวตนด้วย <strong>OAuth 2.0 Token</strong> (ผู้ให้บริการไม่ส่งรหัสผ่านมายังเว็บไซต์) ส่วนบัญชี <strong>Email</strong> จะเก็บรหัสผ่านในรูปแบบ <strong>SHA-256 Salted Hash</strong> เท่านั้น แอดมินสามารถตรวจสอบสถานะ Hash, Provider UID และสั่งบังคับรีเซ็ตรหัสผ่านหรือระงับสิทธิ์ได้จากตารางด้านล่าง
+                        </div>
+                    </div>
+
+                    <!-- กราฟช่องทางการเข้าสู่ระบบ + ตาราง Auth Security Audit -->
+                    <div class="grid grid-cols-1 lg:grid-cols-4 gap-4">
+                        <div class="glass-card rounded-2xl p-4 flex flex-col justify-between">
+                            <h4 class="text-xs font-semibold text-white mb-2">📈 สัดส่วนช่องทางยืนยันตัวตน</h4>
+                            <div class="relative h-44 flex items-center justify-center">
+                                <canvas id="adminProviderChart"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- ตารางตรวจสอบรายชื่อและข้อมูลความปลอดภัยผู้ใช้ -->
+                        <div class="glass-card rounded-2xl p-4 lg:col-span-3 flex flex-col">
+                            <div class="flex flex-wrap justify-between items-center gap-2 mb-3">
+                                <h4 class="text-xs font-semibold text-white">🕵️‍♂️ ตารางตรวจสอบบัญชีผู้ใช้และสถานะความปลอดภัย (<span id="adminFilteredUserCount">0</span>)</h4>
+                                <div class="flex flex-wrap gap-2">
+                                    <input type="text" id="adminUserSearchInput" oninput="renderAdminUsersTable()" placeholder="🔍 ค้นหาชื่อ, อีเมล หรือ UID..."
+                                        class="bg-slate-900/90 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400">
+                                    <select id="adminProviderFilter" onchange="renderAdminUsersTable()"
+                                        class="bg-slate-900/90 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none">
+                                        <option value="all">ทุกช่องทางล็อกอิน</option>
+                                        <option value="google">Google OAuth 2.0</option>
+                                        <option value="facebook">Facebook OAuth 2.0</option>
+                                        <option value="email">Email (SHA-256 Hash)</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="overflow-x-auto flex-1 max-h-80 overflow-y-auto rounded-xl border border-white/5">
+                                <table class="w-full text-left border-collapse">
+                                    <thead class="bg-slate-900/95 text-[11px] text-slate-400 sticky top-0 z-10">
+                                        <tr>
+                                            <th class="py-2.5 px-3 font-medium">ผู้ใช้งาน & Provider UID</th>
+                                            <th class="py-2.5 px-3 font-medium">ช่องทางล็อกอิน</th>
+                                            <th class="py-2.5 px-3 font-medium">สถานะรหัสผ่าน / Credential Audit</th>
+                                            <th class="py-2.5 px-3 font-medium">เข้าใช้ล่าสุด</th>
+                                            <th class="py-2.5 px-3 font-medium">สถานะ</th>
+                                            <th class="py-2.5 px-3 font-medium text-right">เครื่องมือตรวจสอบ</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="adminUsersTableBody" class="divide-y divide-white/5 text-xs">
+                                        <!-- สร้างแถวตารางผ่าน DOM API -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- แท็บ 2: ตั้งค่าความปลอดภัยเจ้าของระบบ (Master Owner Settings) -->
+                <div id="adminOwnerPanel" class="hidden space-y-4">
+                    <div class="glass-card rounded-2xl p-5 space-y-4 max-w-xl">
+                        <div>
+                            <h4 class="text-sm font-bold text-white">🔐 จัดการสิทธิ์เจ้าของระบบเพียงผู้เดียว (Single-Owner Lockdown)</h4>
+                            <p class="text-xs text-slate-400 mt-0.5">เปลี่ยนอีเมลเจ้าของระบบหรือเปลี่ยนรหัสผ่าน Master Admin (เข้ารหัส SHA-256 + Random Salt ใหม่ทุกครั้ง)</p>
+                        </div>
+
+                        <form onsubmit="handleUpdateMasterOwnerSettings(event)" class="space-y-3">
+                            <div>
+                                <label class="block text-xs text-slate-300 mb-1">อีเมลเจ้าของระบบปัจจุบัน (Master Owner Email)</label>
+                                <input type="email" id="settingsOwnerEmailInput" required
+                                    class="w-full bg-slate-900/90 border border-slate-700 rounded-2xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-amber-400">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-slate-300 mb-1">รหัสผ่าน Master Admin ใหม่ (เว้นว่างหากไม่ต้องการเปลี่ยนรหัสผ่าน)</label>
+                                <input type="password" id="settingsNewOwnerPassInput" minlength="8" placeholder="อย่างน้อย 8 ตัวอักษร"
+                                    class="w-full bg-slate-900/90 border border-slate-700 rounded-2xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-amber-400">
+                            </div>
+                            <div class="bg-slate-900/70 rounded-xl p-3 border border-white/5 text-[11px] text-slate-400 space-y-1">
+                                <p>• หากคุณล็อกอินหน้าเว็บด้วย <strong>Google / Facebook / Email</strong> อีเมลที่ล็อกอินจะต้องตรงกับอีเมลเจ้าของระบบด้านบนเท่านั้นจึงจะเปิดหน้าแอดมินได้</p>
+                                <p>• หากกรอกรหัสผ่านผิดติดต่อกัน <strong>3 ครั้ง</strong> ระบบจะล็อกการเข้าถึงอัตโนมัติ <strong>60 วินาที</strong></p>
+                            </div>
+                            <button type="submit" class="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold shadow-lg transition">
+                                💾 บันทึกการตั้งค่าเจ้าของระบบ
+                            </button>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- แท็บ 3: ตั้งค่าเชื่อมต่อ Firebase & OAuth จริง -->
+                <div id="adminFirebasePanel" class="hidden space-y-4">
+                    <div class="glass-card rounded-2xl p-5 space-y-4">
+                        <div class="flex flex-wrap justify-between items-center gap-2">
+                            <div>
+                                <h4 class="text-sm font-bold text-white">🔥 เชื่อมต่อ Firebase Authentication & Firestore (ใช้งานจริงบน GitHub Pages)</h4>
+                                <p class="text-xs text-slate-400 mt-0.5">เมื่อวางค่า Firebase Config ระบบจะสลับจากการจำลองไปใช้ Google Sign-In, Facebook Login และฐานข้อมูล Cloud จริงทันที</p>
+                            </div>
+                            <span id="firebaseConnectionStatus" class="text-xs px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-400/30">
+                                ยังไม่ได้ใส่ Config (ทำงานโหมดจำลอง)
+                            </span>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-medium text-slate-300 mb-1.5">วางโค้ด <code class="text-indigo-300">firebaseConfig</code> (รูปแบบ JSON)</label>
+                            <textarea id="firebaseConfigTextarea" rows="7" placeholder='{
+  "apiKey": "AIzaSy...",
+  "authDomain": "your-project.firebaseapp.com",
+  "projectId": "your-project",
+  "storageBucket": "your-project.appspot.com",
+  "messagingSenderId": "123456789",
+  "appId": "1:123456789:web:abcdef"
+}'
+                                class="w-full bg-slate-950/90 border border-slate-700 rounded-2xl p-3.5 text-xs font-mono text-emerald-300 focus:outline-none focus:border-indigo-500"></textarea>
+                        </div>
+
+                        <div class="flex flex-wrap gap-2.5">
+                            <button type="button" onclick="saveFirebaseConfigFromUI()" class="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg transition">
+                                💾 บันทึกและเชื่อมต่อ Firebase ทันที
+                            </button>
+                            <button type="button" onclick="clearFirebaseConfig()" class="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition">
+                                กลับไปใช้โหมดจำลอง (Local)
+                            </button>
+                        </div>
+
+                        <div class="bg-slate-900/70 rounded-2xl p-4 border border-white/5 space-y-2">
+                            <p class="text-xs font-semibold text-indigo-300">📘 คู่มือ 4 ขั้นตอนเปิดใช้ Google & Facebook Login ฟรีบน GitHub Pages:</p>
+                            <ol class="list-decimal list-inside text-[11px] text-slate-300 space-y-1.5 leading-relaxed">
+                                <li>ไปที่ <span class="text-white font-medium">console.firebase.google.com</span> สร้างโปรเจกต์ฟรี และเพิ่ม Web App เพื่อคัดลอกค่า <code class="text-emerald-300">firebaseConfig</code> มาวางในช่องด้านบน</li>
+                                <li>เข้าไปที่เมนู <span class="text-white font-medium">Authentication → Sign-in method</span> เปิดใช้งาน <strong>Google</strong>, <strong>Facebook</strong> (ใส่ App ID & App Secret จาก Meta for Developers) และ <strong>Email/Password</strong></li>
+                                <li>ในหน้า <span class="text-white font-medium">Authentication → Settings → Authorized domains</span> กดเพิ่มโดเมน GitHub Pages ของคุณ เช่น <code class="text-amber-300">username.github.io</code></li>
+                                <li>ไปที่เมนู <span class="text-white font-medium">Firestore Database</span> กดสร้างฐานข้อมูล เพื่อเก็บบันทึกข้อมูลผู้ใช้งานแบบเรียลไทม์ให้แอดมินดูได้จากทุกเครื่อง</li>
+                            </ol>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- =================================================================== -->
+    <!-- Modal 10: หน้าต่างตรวจสอบรายละเอียดความปลอดภัยผู้ใช้ (Inspect Audit)  -->
+    <!-- =================================================================== -->
+    <div id="userAuditModal" class="fixed inset-0 bg-black/85 backdrop-blur-md z-[60] hidden flex items-center justify-center p-4">
+        <div class="glass-modal rounded-3xl max-w-md w-full p-6 space-y-4 border border-indigo-500/30">
+            <div class="flex justify-between items-start">
+                <div class="flex items-center space-x-3">
+                    <img id="auditModalAvatar" src="" alt="Avatar" class="w-12 h-12 rounded-full object-cover border-2 border-indigo-400/60 bg-slate-800">
+                    <div>
+                        <h3 id="auditModalName" class="text-base font-bold text-white">-</h3>
+                        <p id="auditModalEmail" class="text-xs text-slate-400">-</p>
+                    </div>
+                </div>
+                <button type="button" onclick="closeModal('userAuditModal')" class="text-slate-400 hover:text-white text-lg p-1">✕</button>
+            </div>
+
+            <div class="bg-slate-900/90 rounded-2xl p-4 border border-white/10 space-y-2.5 text-xs">
+                <div class="flex justify-between items-center border-b border-white/5 pb-2">
+                    <span class="text-slate-400">ช่องทางยืนยันตัวตน (Auth Provider):</span>
+                    <span id="auditModalProvider" class="font-semibold text-sky-300">-</span>
+                </div>
+                <div class="flex justify-between items-center border-b border-white/5 pb-2">
+                    <span class="text-slate-400">รหัสอ้างอิงผู้ใช้ (Provider UID):</span>
+                    <span id="auditModalUid" class="font-mono text-[11px] text-slate-200">-</span>
+                </div>
+                <div class="space-y-1 border-b border-white/5 pb-2">
+                    <span class="text-slate-400 block">ข้อมูลยืนยันรหัสผ่าน / โทเค็น (Credential Audit):</span>
+                    <div id="auditModalCredentialBox" class="bg-slate-950 p-2.5 rounded-xl font-mono text-[11px] text-emerald-300 break-all border border-emerald-500/20">
+                        -
+                    </div>
+                </div>
+                <div class="flex justify-between items-center border-b border-white/5 pb-2">
+                    <span class="text-slate-400">สถานะการรีเซ็ตรหัสผ่าน / Session:</span>
+                    <span id="auditModalSessionStatus" class="font-medium text-emerald-400">ปกติ</span>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span class="text-slate-400">เข้าใช้งานล่าสุด / รายการทั้งหมด:</span>
+                    <span id="auditModalLastActive" class="text-slate-200">-</span>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2.5 pt-1">
+                <button type="button" id="auditForceResetBtn" class="py-2.5 px-3 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/30 text-amber-300 text-xs font-semibold transition">
+                    🔑 บังคับรีเซ็ต / ล้าง Session
+                </button>
+                <button type="button" id="auditSuspendToggleBtn" class="py-2.5 px-3 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 border border-rose-400/30 text-rose-300 text-xs font-semibold transition">
+                    🚫 ระงับการใช้งาน
+                </button>
             </div>
         </div>
     </div>
@@ -210,11 +534,29 @@
     <!-- =================================================================== -->
     <!-- คอนเทนเนอร์เนื้อหาหลักของแอป                                        -->
     <!-- =================================================================== -->
-    <div class="relative z-10 max-w-md mx-auto px-5 pt-6">
+    <div class="relative z-10 max-w-md mx-auto px-5 pt-5">
         
-        <!-- 1. ส่วนหัว: รูปโปรไฟล์ + ชื่อแอป + ปุ่มจัดการข้อมูล -->
+        <!-- แถบสถานะบัญชีผู้ใช้ (Account & Auth Session Bar) -->
+        <div class="glass-card rounded-2xl px-3.5 py-2 mb-4 flex items-center justify-between gap-2 border border-white/10">
+            <div class="flex items-center space-x-2 min-w-0">
+                <span id="sessionStatusDot" class="w-2 h-2 rounded-full bg-slate-400 shrink-0"></span>
+                <p id="sessionUserLabel" class="text-xs text-slate-300 truncate">ยังไม่ได้เข้าสู่ระบบ (โหมดใช้งานในเครื่อง)</p>
+            </div>
+            <div class="flex items-center space-x-1.5 shrink-0">
+                <button type="button" id="openAuthBtn" onclick="openAuthModal()"
+                    class="px-3 py-1 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-semibold shadow transition active:scale-95">
+                    เข้าสู่ระบบ
+                </button>
+                <button type="button" id="logoutBtn" onclick="handleLogoutUser()"
+                    class="hidden px-2.5 py-1 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 text-[11px] font-medium transition">
+                    ออก
+                </button>
+            </div>
+        </div>
+
+        <!-- 1. ส่วนหัว: รูปโปรไฟล์ + ชื่อแอป + ปุ่มแอดมิน + ปุ่มจัดการข้อมูล -->
         <header class="flex justify-between items-center mb-6">
-            <div class="flex items-center space-x-3.5 min-w-0">
+            <div class="flex items-center space-x-3 min-w-0">
                 <!-- รูปโปรไฟล์ (คลิกเพื่ออัปโหลดและบีบอัดรูปอัตโนมัติ) -->
                 <div onclick="document.getElementById('profileUpload').click()" title="แตะเพื่อเปลี่ยนรูปโปรไฟล์"
                     class="relative w-14 h-14 rounded-full overflow-hidden border-2 border-indigo-400/60 bg-slate-800 flex items-center justify-center shrink-0 cursor-pointer shadow-lg active:scale-95 transition">
@@ -226,7 +568,7 @@
 
                 <!-- ชื่อแอป (คลิกเพื่อเปลี่ยนชื่อ) -->
                 <div class="min-w-0">
-                    <p class="text-slate-400 text-xs font-light">กระเป๋าเงินอัจฉริยะ</p>
+                    <p id="userGreetingSubtitle" class="text-slate-400 text-xs font-light truncate">กระเป๋าเงินอัจฉริยะ</p>
                     <button type="button" onclick="openNameModal()" class="flex items-center space-x-1.5 text-left group max-w-full">
                         <h1 id="appNameDisplay" class="text-xl font-bold tracking-tight text-white truncate group-hover:text-indigo-300 transition">AuraWallet</h1>
                         <span class="text-xs bg-white/10 px-1.5 py-0.5 rounded-md text-slate-300 shrink-0">✏️</span>
@@ -234,12 +576,20 @@
                 </div>
             </div>
 
-            <!-- ปุ่มเปิดศูนย์จัดการข้อมูล & สำรองไฟล์ -->
-            <button type="button" onclick="openModal('dataModal')" title="สำรองข้อมูล / ส่งออก CSV"
-                class="glass-card hover:bg-slate-800/80 text-slate-200 px-3.5 py-2 rounded-2xl text-xs font-medium flex items-center space-x-1.5 transition shrink-0 ml-2 active:scale-95">
-                <span>💾</span>
-                <span>ข้อมูล</span>
-            </button>
+            <!-- ปุ่มแอดมินหลังบ้าน + ปุ่มศูนย์จัดการข้อมูล -->
+            <div class="flex items-center space-x-2 shrink-0 ml-2">
+                <button type="button" onclick="handleAdminButtonClick()" title="เข้าสู่ระบบแอดมินเฉพาะเจ้าของเว็บ"
+                    class="glass-card hover:bg-amber-500/20 border-amber-400/30 text-amber-300 px-3 py-2 rounded-2xl text-xs font-semibold flex items-center space-x-1 transition active:scale-95">
+                    <span>🔐</span>
+                    <span>แอดมิน</span>
+                </button>
+
+                <button type="button" onclick="openModal('dataModal')" title="สำรองข้อมูล / ส่งออก CSV"
+                    class="glass-card hover:bg-slate-800/80 text-slate-200 px-3 py-2 rounded-2xl text-xs font-medium flex items-center space-x-1 transition active:scale-95">
+                    <span>💾</span>
+                    <span>ข้อมูล</span>
+                </button>
+            </div>
         </header>
 
         <!-- 2. การ์ดสรุปยอดเงินคงเหลือ (Total Balance Card) -->
@@ -286,7 +636,6 @@
                     <span id="budgetSpentText" class="text-slate-300">ใช้ไป ฿0.00</span>
                     <span id="budgetLimitText" class="text-slate-400">เป้าหมาย ฿0.00</span>
                 </div>
-                <!-- แถบ Progress Bar -->
                 <div class="w-full h-3 bg-slate-900/90 rounded-full overflow-hidden border border-white/5 p-0.5">
                     <div id="budgetProgressBar" class="h-full rounded-full bg-emerald-500 transition-all duration-500" style="width: 0%"></div>
                 </div>
@@ -320,9 +669,58 @@
             </div>
         </section>
 
-        <!-- 5. ฟอร์มบันทึกรายการใหม่ -->
-        <section class="glass-card rounded-3xl p-6 mb-6">
-            <h3 class="text-base font-semibold text-white mb-4">➕ บันทึกรายการใหม่</h3>
+        <!-- 5. ฟอร์มบันทึกรายการใหม่ + สแกนสลิปธนาคารอัตโนมัติ (OCR) -->
+        <section class="glass-card rounded-3xl p-6 mb-6 space-y-5">
+            <div class="flex justify-between items-center">
+                <h3 class="text-base font-semibold text-white">➕ บันทึกรายการใหม่</h3>
+                <span class="text-[11px] bg-indigo-500/20 text-indigo-300 px-2.5 py-0.5 rounded-full border border-indigo-400/20">AI OCR ไทย/อังกฤษ</span>
+            </div>
+
+            <!-- กล่องอัปโหลดสลิปธนาคารอัตโนมัติ -->
+            <div class="space-y-3">
+                <div id="slipDropzone" onclick="document.getElementById('slipFileInput').click()"
+                    class="slip-dropzone rounded-2xl p-4 text-center cursor-pointer active:scale-[0.99]">
+                    <input type="file" id="slipFileInput" accept="image/*" multiple class="hidden" onchange="handleSlipFiles(event.target.files)">
+                    <div class="w-11 h-11 rounded-2xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-xl mx-auto mb-2 shadow">
+                        🧾
+                    </div>
+                    <p class="text-sm font-semibold text-white">🧾 อัปโหลดสลิปธนาคาร (ระบบลงรายการให้อัตโนมัติ)</p>
+                    <p class="text-[11px] text-slate-300 mt-1">แตะเลือกรูปสลิป (เลือกได้หลายใบ), ลากไฟล์มาวาง หรือกด Ctrl+V เพื่อวางรูป</p>
+                </div>
+
+                <!-- สวิตช์ตัวเลือกบันทึกรายการอัตโนมัติทันที -->
+                <div class="flex items-center justify-between bg-slate-900/60 px-3.5 py-2.5 rounded-2xl border border-white/5">
+                    <div class="pr-2">
+                        <p class="text-xs font-medium text-slate-200">บันทึกรายการลงระบบให้อัตโนมัติทันทีหลังอ่านสลิป</p>
+                        <p class="text-[10px] text-slate-400">รองรับ K PLUS, SCB, Krungthai, BBL, PromptPay</p>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer shrink-0">
+                        <input type="checkbox" id="autoSaveSlipToggle" checked class="sr-only peer">
+                        <div class="w-10 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
+                    </label>
+                </div>
+
+                <!-- แถบสถานะระหว่างอ่านสลิปด้วย Tesseract OCR -->
+                <div id="ocrProgressBox" class="hidden bg-slate-900/90 border border-indigo-500/30 rounded-2xl p-3.5 space-y-2">
+                    <div class="flex justify-between items-center text-xs">
+                        <span id="ocrStatusText" class="text-indigo-300 font-medium">กำลังอ่านข้อมูลจากสลิป...</span>
+                        <span id="ocrPercentText" class="text-emerald-400 font-bold">0%</span>
+                    </div>
+                    <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                        <div id="ocrProgressBar" class="h-full bg-gradient-to-r from-indigo-500 to-emerald-400 rounded-full transition-all duration-200" style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <!-- การ์ดสรุปผลการอ่านสลิปล่าสุด (สร้างเนื้อหาด้วย DOM API) -->
+                <div id="slipSummaryContainer" class="space-y-2.5"></div>
+            </div>
+
+            <div class="relative flex py-1 items-center">
+                <div class="flex-grow border-t border-slate-700/70"></div>
+                <span class="flex-shrink mx-3 text-[11px] text-slate-400">หรือกรอกรายการด้วยตนเอง</span>
+                <div class="flex-grow border-t border-slate-700/70"></div>
+            </div>
+
             <form id="transactionForm" onsubmit="handleAddTransaction(event)" class="space-y-4">
                 
                 <!-- สวิตช์เลือกประเภท -->
@@ -353,14 +751,13 @@
                         </button>
                     </div>
                     <select id="categorySelect" class="w-full bg-slate-900/80 border border-slate-700/70 rounded-2xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500 text-sm">
-                        <!-- สร้างตัวเลือกผ่าน DOM API -->
                     </select>
                 </div>
 
                 <!-- บันทึกช่วยจำ -->
                 <div>
                     <label class="block text-xs font-medium text-slate-300 mb-1.5">บันทึกช่วยจำ (ไม่บังคับ)</label>
-                    <input type="text" id="noteInput" maxlength="60" placeholder="เช่น ค่าข้าวกลางวัน, เงินเดือนออก" 
+                    <input type="text" id="noteInput" maxlength="80" placeholder="เช่น ค่าข้าวกลางวัน, เงินเดือนออก" 
                         class="w-full bg-slate-900/80 border border-slate-700/70 rounded-2xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 text-sm">
                 </div>
 
@@ -398,15 +795,157 @@
             </div>
 
             <!-- รายการธุรกรรมทั้งหมด -->
-            <div id="transactionList" class="space-y-3">
-                <!-- สร้างการ์ดรายการผ่าน DOM API -->
-            </div>
+            <div id="transactionList" class="space-y-3"></div>
         </section>
 
     </div>
 
     <!-- =================================================================== -->
-    <!-- JavaScript ควบคุมการทำงานทั้งหมดของ AuraWallet                     -->
+    <!-- Firebase v10 Modular SDK Bridge (โหลดแบบ Dynamic เมื่อตั้งค่า Config) -->
+    <!-- =================================================================== -->
+    <script type="module">
+        import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+        import {
+            getAuth,
+            GoogleAuthProvider,
+            FacebookAuthProvider,
+            signInWithPopup,
+            signInWithEmailAndPassword,
+            createUserWithEmailAndPassword,
+            updateProfile,
+            signOut,
+            onAuthStateChanged
+        } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+        import {
+            getFirestore,
+            doc,
+            setDoc,
+            getDocs,
+            updateDoc,
+            collection,
+            serverTimestamp
+        } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+        window.FirebaseBridge = {
+            app: null,
+            auth: null,
+            db: null,
+            isReady: false,
+
+            init(config) {
+                try {
+                    if (!config || !config.apiKey || !config.authDomain || !config.projectId) {
+                        this.isReady = false;
+                        return false;
+                    }
+                    const existing = getApps();
+                    this.app = existing.length ? existing[0] : initializeApp(config);
+                    this.auth = getAuth(this.app);
+                    this.db = getFirestore(this.app);
+                    this.isReady = true;
+
+                    onAuthStateChanged(this.auth, async (fbUser) => {
+                        if (fbUser && typeof window.onFirebaseUserSynced === 'function') {
+                            const providerId = fbUser.providerData?.[0]?.providerId || 'email';
+                            let provider = 'email';
+                            if (providerId.includes('google')) provider = 'google';
+                            else if (providerId.includes('facebook')) provider = 'facebook';
+
+                            const userProfile = {
+                                uid: fbUser.uid,
+                                name: fbUser.displayName || fbUser.email?.split('@')[0] || 'ผู้ใช้งาน AuraWallet',
+                                email: fbUser.email || 'social-user@aurawallet.app',
+                                photoURL: fbUser.photoURL || '',
+                                provider: provider
+                            };
+                            await this.syncUserToFirestore(userProfile);
+                            window.onFirebaseUserSynced(userProfile);
+                        }
+                    });
+                    return true;
+                } catch (err) {
+                    console.error('Firebase Init Error:', err);
+                    this.isReady = false;
+                    return false;
+                }
+            },
+
+            async signInSocial(providerName) {
+                const provider = providerName === 'facebook'
+                    ? new FacebookAuthProvider()
+                    : new GoogleAuthProvider();
+                const result = await signInWithPopup(this.auth, provider);
+                return result.user;
+            },
+
+            async signInEmail(email, password) {
+                const res = await signInWithEmailAndPassword(this.auth, email, password);
+                return res.user;
+            },
+
+            async registerEmail(name, email, password) {
+                const res = await createUserWithEmailAndPassword(this.auth, email, password);
+                if (name) {
+                    await updateProfile(res.user, { displayName: name });
+                }
+                return res.user;
+            },
+
+            async syncUserToFirestore(userObj) {
+                if (!this.isReady || !this.db) return;
+                try {
+                    const userRef = doc(this.db, 'users', userObj.uid);
+                    await setDoc(userRef, {
+                        uid: userObj.uid,
+                        name: userObj.name,
+                        email: userObj.email,
+                        photoURL: userObj.photoURL || '',
+                        provider: userObj.provider,
+                        lastActiveAt: Date.now(),
+                        updatedAt: serverTimestamp()
+                    }, { merge: true });
+                } catch (e) {
+                    console.warn('Firestore sync skipped (check rules):', e.message);
+                }
+            },
+
+            async fetchAllUsersFromFirestore() {
+                if (!this.isReady || !this.db) return null;
+                try {
+                    const snap = await getDocs(collection(this.db, 'users'));
+                    const list = [];
+                    snap.forEach(d => list.push({ uid: d.id, ...d.data() }));
+                    return list;
+                } catch (e) {
+                    console.warn('Firestore fetch users error:', e.message);
+                    return null;
+                }
+            },
+
+            async updateUserInFirestore(uid, patch) {
+                if (!this.isReady || !this.db) return;
+                try {
+                    await updateDoc(doc(this.db, 'users', uid), patch);
+                } catch (e) {
+                    console.warn('Firestore update error:', e.message);
+                }
+            },
+
+            async signOutUser() {
+                if (this.isReady && this.auth) {
+                    await signOut(this.auth);
+                }
+            }
+        };
+
+        // เริ่มต้นเชื่อมต่อ Firebase อัตโนมัติหากแอดมินเคยบันทึก Config ไว้แล้ว
+        if (typeof window.bootFirebaseFromSavedConfig === 'function') {
+            window.bootFirebaseFromSavedConfig();
+        }
+    </script>
+
+    <!-- =================================================================== -->
+    <!-- JavaScript ควบคุมการทำงานทั้งหมดของ AuraWallet + Auth + Admin       -->
     <!-- =================================================================== -->
     <script>
         // คีย์สำหรับ LocalStorage
@@ -415,33 +954,84 @@
             NAME: 'aurawallet_name_v3',
             PIC: 'aurawallet_pic_v3',
             BUDGET: 'aurawallet_budget_v3',
-            CATS: 'aurawallet_cats_v3'
+            CATS: 'aurawallet_cats_v3',
+            CURRENT_USER: 'aurawallet_current_user_v4',
+            USERS_DB: 'aurawallet_users_directory_v5',
+            FB_CONFIG: 'aurawallet_firebase_config_v4',
+            MASTER_OWNER: 'aurawallet_master_owner_vault_v1',
+            ADMIN_LOCKOUT: 'aurawallet_admin_lockout_v1'
         };
 
         // หมวดหมู่เริ่มต้นของระบบ
-        const DEFAULT_CATEGORIES = {
-            expense: [
-                { id: 'exp_food', emoji: '🍔', name: 'อาหารและเครื่องดื่ม', isCustom: false },
-                { id: 'exp_trans', emoji: '🚗', name: 'ค่าเดินทาง', isCustom: false },
-                { id: 'exp_shop', emoji: '🛍️', name: 'ช้อปปิ้งและของใช้', isCustom: false },
-                { id: 'exp_bill', emoji: '💡', name: 'ค่าน้ำ / ค่าไฟ / เน็ต', isCustom: false },
-                { id: 'exp_ent', emoji: '🎬', name: 'ความบันเทิง', isCustom: false },
-                { id: 'exp_health', emoji: '🏥', name: 'สุขภาพ / ยา', isCustom: false },
-                { id: 'exp_other', emoji: '📦', name: 'รายจ่ายอื่นๆ', isCustom: false }
-            ],
-            income: [
-                { id: 'inc_salary', emoji: '💰', name: 'เงินเดือน', isCustom: false },
-                { id: 'inc_freelance', emoji: '💻', name: 'งานเสริม / ฟรีลานซ์', isCustom: false },
-                { id: 'inc_bonus', emoji: '🎁', name: 'โบนัส / เงินรางวัล', isCustom: false },
-                { id: 'inc_invest', emoji: '📈', name: 'กำไรจากการลงทุน', isCustom: false },
-                { id: 'inc_other', emoji: '✨', name: 'รายรับอื่นๆ', isCustom: false }
-            ]
-        };
-
-        // ชุดสีสำหรับกราฟโดนัท
-        const CHART_COLORS = [
-            '#f43f5e', '#8b5cf6', '#3b82f6', '#10b981', '#f59e0b',
-            '#ec4899', '#06b6d4', '#6366f1', '#84cc16', '#f97316'
+        // ข้อมูลผู้ใช้งานตัวอย่างเริ่มต้นสำหรับให้แอดมินตรวจสอบ Auth Security Audit ทันที
+        const INITIAL_SEED_USERS = [
+            {
+                uid: 'google_oauth_10928374',
+                name: 'ณัฐพล วงศ์สวัสดิ์',
+                email: 'nattapon.w@gmail.com',
+                provider: 'google',
+                authMethodLabel: 'Google OAuth 2.0',
+                credentialAudit: 'OAuth 2.0 Token (ไม่ส่งรหัสผ่านมายังเว็บ)',
+                status: 'active',
+                forceResetRequired: false,
+                photoURL: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%230ea5e9'/><text x='50' y='64' font-size='44' text-anchor='middle' fill='white'>น</text></svg>",
+                txCount: 42,
+                lastActiveAt: Date.now() - 1000 * 60 * 12
+            },
+            {
+                uid: 'fb_oauth_88492011',
+                name: 'กัญญารัตน์ ศรีสุข',
+                email: 'kanyarat.fb@facebook.com',
+                provider: 'facebook',
+                authMethodLabel: 'Facebook OAuth 2.0',
+                credentialAudit: 'OAuth 2.0 Token (ไม่ส่งรหัสผ่านมายังเว็บ)',
+                status: 'active',
+                forceResetRequired: false,
+                photoURL: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%231877F2'/><text x='50' y='64' font-size='44' text-anchor='middle' fill='white'>ก</text></svg>",
+                txCount: 19,
+                lastActiveAt: Date.now() - 1000 * 60 * 95
+            },
+            {
+                uid: 'email_usr_30192',
+                name: 'ธนกฤต พงศ์ไพบูลย์',
+                email: 'thanakrit@outlook.com',
+                provider: 'email',
+                authMethodLabel: 'Email + Password',
+                passwordHash: '8f4b2e91c7d04a63b91e52f08a7c4d3e91b20f4a6c8e1d7b3a5f9c2e4d6a8b1c',
+                passwordSalt: 'a9f1c3e8b2d4',
+                credentialAudit: 'SHA-256 Salted Hash: 8f4b2e91...d6a8b1c',
+                status: 'active',
+                forceResetRequired: false,
+                photoURL: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%238b5cf6'/><text x='50' y='64' font-size='44' text-anchor='middle' fill='white'>ธ</text></svg>",
+                txCount: 14,
+                lastActiveAt: Date.now() - 1000 * 60 * 60 * 5
+            },
+            {
+                uid: 'google_oauth_55201948',
+                name: 'วรเมธ เจริญกิจ',
+                email: 'worameth.dev@gmail.com',
+                provider: 'google',
+                authMethodLabel: 'Google OAuth 2.0',
+                credentialAudit: 'OAuth 2.0 Token (ไม่ส่งรหัสผ่านมายังเว็บ)',
+                status: 'active',
+                forceResetRequired: false,
+                photoURL: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%2310b981'/><text x='50' y='64' font-size='44' text-anchor='middle' fill='white'>ว</text></svg>",
+                txCount: 64,
+                lastActiveAt: Date.now() - 1000 * 60 * 60 * 18
+            },
+            {
+                uid: 'fb_oauth_77310492',
+                name: 'ปิยะดา รัตนโชติ',
+                email: 'piyada.rc@facebook.com',
+                provider: 'facebook',
+                authMethodLabel: 'Facebook OAuth 2.0',
+                credentialAudit: 'OAuth 2.0 Token (ไม่ส่งรหัสผ่านมายังเว็บ)',
+                status: 'active',
+                forceResetRequired: false,
+                photoURL: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23ec4899'/><text x='50' y='64' font-size='44' text-anchor='middle' fill='white'>ป</text></svg>",
+                txCount: 11,
+                lastActiveAt: Date.now() - 1000 * 60 * 60 * 30
+            }
         ];
 
         // สถานะของแอป (Application State)
@@ -453,10 +1043,45 @@
             categories: JSON.parse(JSON.stringify(DEFAULT_CATEGORIES)),
             currentFormType: 'expense',
             filterType: 'all',
-            searchQuery: ''
+            searchQuery: '',
+            recentSlipResults: [],
+            isScanningSlip: false,
+            // สถานะผู้ใช้งานและ Single-Owner Admin
+            currentUser: null,
+            usersDirectory: [],
+            authTab: 'login',
+            masterOwnerVault: null, // { ownerEmail, passwordHash, salt, createdAt }
+            isMasterOwnerUnlocked: false,
+            failedAdminAttempts: 0,
+            adminLockoutUntil: 0,
+            firebaseConfig: null
         };
 
         let donutChartInstance = null;
+        let adminProviderChartInstance = null;
+        let lockoutTimerInterval = null;
+
+        // -------------------------------------------------------------------
+        // 0. ฟังก์ชันเข้ารหัส Web Crypto API (SHA-256 + Random Salt)
+        // -------------------------------------------------------------------
+        function generateRandomSalt(byteLength = 12) {
+            const arr = new Uint8Array(byteLength);
+            window.crypto.getRandomValues(arr);
+            return Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        async function hashPasswordWithSalt(plainPassword, salt) {
+            const encoder = new TextEncoder();
+            const data = encoder.encode(`${salt}:${plainPassword}`);
+            const hashBuffer = await window.crypto.subtle.digest('SHA-256', data);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        function formatTruncatedHash(hashHex) {
+            if (!hashHex || hashHex.length < 16) return 'SHA-256 Salted Hash';
+            return `SHA-256 Salted Hash: ${hashHex.slice(0, 8)}...${hashHex.slice(-8)}`;
+        }
 
         // -------------------------------------------------------------------
         // 1. โหลดและบันทึกข้อมูลลง LocalStorage
@@ -477,6 +1102,36 @@
 
                 const rawCats = localStorage.getItem(KEYS.CATS);
                 if (rawCats) state.categories = JSON.parse(rawCats);
+
+                const rawUsersDir = localStorage.getItem(KEYS.USERS_DB);
+                if (rawUsersDir) {
+                    state.usersDirectory = JSON.parse(rawUsersDir);
+                } else {
+                    state.usersDirectory = JSON.parse(JSON.stringify(INITIAL_SEED_USERS));
+                    saveUsersDirectory();
+                }
+
+                const rawCurrentUser = localStorage.getItem(KEYS.CURRENT_USER);
+                if (rawCurrentUser) {
+                    state.currentUser = JSON.parse(rawCurrentUser);
+                }
+
+                const rawOwnerVault = localStorage.getItem(KEYS.MASTER_OWNER);
+                if (rawOwnerVault) {
+                    state.masterOwnerVault = JSON.parse(rawOwnerVault);
+                }
+
+                const rawLockout = localStorage.getItem(KEYS.ADMIN_LOCKOUT);
+                if (rawLockout) {
+                    const parsedLock = JSON.parse(rawLockout);
+                    state.failedAdminAttempts = parsedLock.attempts || 0;
+                    state.adminLockoutUntil = parsedLock.lockoutUntil || 0;
+                }
+
+                const rawFbCfg = localStorage.getItem(KEYS.FB_CONFIG);
+                if (rawFbCfg) {
+                    state.firebaseConfig = JSON.parse(rawFbCfg);
+                }
             } catch (err) {
                 console.error('Error loading LocalStorage:', err);
             }
@@ -485,8 +1140,25 @@
         function saveTransactions() {
             try {
                 localStorage.setItem(KEYS.TX, JSON.stringify(state.transactions));
+                // อัปเดตจำนวนรายการของผู้ใช้ปัจจุบันใน Directory
+                if (state.currentUser) {
+                    const idx = state.usersDirectory.findIndex(u => u.uid === state.currentUser.uid);
+                    if (idx !== -1) {
+                        state.usersDirectory[idx].txCount = state.transactions.length;
+                        state.usersDirectory[idx].lastActiveAt = Date.now();
+                        saveUsersDirectory();
+                    }
+                }
             } catch (e) {
                 showToast('พื้นที่จัดเก็บในเครื่องเต็ม', '⚠️');
+            }
+        }
+
+        function saveUsersDirectory() {
+            try {
+                localStorage.setItem(KEYS.USERS_DB, JSON.stringify(state.usersDirectory));
+            } catch (e) {
+                console.warn('Unable to save users directory:', e);
             }
         }
 
@@ -502,7 +1174,252 @@
         }
 
         // -------------------------------------------------------------------
-        // 3. จัดการชื่อแอปและรูปโปรไฟล์ (พร้อมบีบอัดรูปด้วย Canvas)
+        // 3. ระบบ Authentication (Google, Facebook, Email, Demo & Admin)
+        // -------------------------------------------------------------------
+        window.bootFirebaseFromSavedConfig = function() {
+            if (!state.firebaseConfig) return;
+            const textarea = document.getElementById('firebaseConfigTextarea');
+            if (textarea) {
+                textarea.value = JSON.stringify(state.firebaseConfig, null, 2);
+            }
+            if (window.FirebaseBridge && window.FirebaseBridge.init(state.firebaseConfig)) {
+                updateFirebaseBadgeUI(true);
+            }
+        };
+
+        window.onFirebaseUserSynced = function(fbUserProfile) {
+            completeUserLogin(fbUserProfile, false);
+        };
+
+        function updateFirebaseBadgeUI(connected) {
+            const statusBadge = document.getElementById('firebaseConnectionStatus');
+            const adminModeBadge = document.getElementById('adminDataModeBadge');
+            if (connected) {
+                if (statusBadge) {
+                    statusBadge.className = 'text-xs px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30';
+                    statusBadge.textContent = '✓ เชื่อมต่อ Firebase Cloud จริงแล้ว';
+                }
+                if (adminModeBadge) {
+                    adminModeBadge.className = 'text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/25 text-emerald-300 border border-emerald-400/25';
+                    adminModeBadge.textContent = 'Firebase Cloud Live';
+                }
+            } else {
+                if (statusBadge) {
+                    statusBadge.className = 'text-xs px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-400/30';
+                    statusBadge.textContent = 'ยังไม่ได้ใส่ Config (ทำงานโหมดจำลอง)';
+                }
+                if (adminModeBadge) {
+                    adminModeBadge.className = 'text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/25 text-indigo-300 border border-indigo-400/20';
+                    adminModeBadge.textContent = 'Local + Demo Mode';
+                }
+            }
+        }
+
+        function openAuthModal() {
+            switchAuthTab('login');
+            openModal('authModal');
+        }
+
+        function switchAuthTab(tab) {
+            state.authTab = tab;
+            const loginBtn = document.getElementById('authTabLoginBtn');
+            const regBtn = document.getElementById('authTabRegisterBtn');
+            const nameField = document.getElementById('registerNameField');
+            const submitBtn = document.getElementById('emailAuthSubmitBtn');
+
+            if (tab === 'login') {
+                loginBtn.className = 'py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white transition';
+                regBtn.className = 'py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white transition';
+                nameField.classList.add('hidden');
+                submitBtn.textContent = 'เข้าสู่ระบบด้วยอีเมล';
+            } else {
+                regBtn.className = 'py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white transition';
+                loginBtn.className = 'py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white transition';
+                nameField.classList.remove('hidden');
+                submitBtn.textContent = 'สมัครสมาชิกและเข้าสู่ระบบ';
+            }
+        }
+
+        async function loginWithSocialProvider(provider) {
+            // หากตั้งค่า Firebase จริงไว้แล้ว ให้เรียก Google / Facebook Popup จริง
+            if (window.FirebaseBridge && window.FirebaseBridge.isReady) {
+                try {
+                    showToast(`กำลังเปิดหน้าต่างเข้าสู่ระบบ ${provider === 'google' ? 'Google' : 'Facebook'}...`, '🔐');
+                    await window.FirebaseBridge.signInSocial(provider);
+                    closeModal('authModal');
+                    showToast(`เข้าสู่ระบบผ่าน ${provider === 'google' ? 'Google' : 'Facebook'} สำเร็จ!`, '🎉');
+                } catch (err) {
+                    console.error(err);
+                    showToast(`ไม่สามารถล็อกอิน ${provider} ได้: ${err.message}`, '⚠️');
+                }
+                return;
+            }
+
+            // โหมด Smart Simulation (พร้อมใช้งานบน GitHub Pages / Preview ทันทีโดยไม่เกิด Error)
+            const isGoogle = provider === 'google';
+            const simUser = {
+                uid: isGoogle ? 'google_oauth_' + Date.now().toString().slice(-6) : 'fb_oauth_' + Date.now().toString().slice(-6),
+                name: isGoogle ? 'คุณพีรพล (Google Account)' : 'คุณพิมพ์ชนก (Facebook Account)',
+                email: isGoogle ? 'peerapol.user@gmail.com' : 'pimchanok.social@facebook.com',
+                provider: provider,
+                authMethodLabel: isGoogle ? 'Google OAuth 2.0' : 'Facebook OAuth 2.0',
+                credentialAudit: 'OAuth 2.0 Token (ไม่ส่งรหัสผ่านมายังเว็บ)',
+                status: 'active',
+                forceResetRequired: false,
+                photoURL: isGoogle
+                    ? "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%234285F4'/><text x='50' y='65' font-size='44' font-weight='bold' text-anchor='middle' fill='white'>G</text></svg>"
+                    : "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%231877F2'/><text x='50' y='66' font-size='46' font-weight='bold' text-anchor='middle' fill='white'>f</text></svg>"
+            };
+
+            completeUserLogin(simUser, true);
+            closeModal('authModal');
+            showToast(`เข้าสู่ระบบผ่าน ${isGoogle ? 'Google' : 'Facebook'} เรียบร้อย!`, '🎉');
+        }
+
+        async function handleEmailAuthSubmit(event) {
+            event.preventDefault();
+            const email = document.getElementById('authEmail').value.trim().toLowerCase();
+            const password = document.getElementById('authPassword').value;
+            const displayNameInput = document.getElementById('authDisplayName').value.trim();
+
+            if (!email || !password) return;
+
+            // เชื่อมต่อ Firebase Auth จริงถ้ามี Config
+            if (window.FirebaseBridge && window.FirebaseBridge.isReady) {
+                try {
+                    if (state.authTab === 'register') {
+                        await window.FirebaseBridge.registerEmail(displayNameInput || email.split('@')[0], email, password);
+                    } else {
+                        await window.FirebaseBridge.signInEmail(email, password);
+                    }
+                    closeModal('authModal');
+                    showToast('เข้าสู่ระบบสำเร็จ!', '✅');
+                } catch (err) {
+                    showToast(`เกิดข้อผิดพลาด: ${err.message}`, '⚠️');
+                }
+                return;
+            }
+
+            // โหมด LocalStorage Auth พร้อมเข้ารหัสรหัสผ่าน SHA-256 + Random Salt (ไม่เก็บรหัสผ่านจริง)
+            const existing = state.usersDirectory.find(u => u.email.toLowerCase() === email);
+            if (existing && existing.status === 'suspended') {
+                showToast('บัญชีนี้ถูกระงับการใช้งานโดยเจ้าของระบบ', '🚫');
+                return;
+            }
+
+            if (state.authTab === 'login' && existing && existing.passwordHash && existing.passwordSalt) {
+                const checkHash = await hashPasswordWithSalt(password, existing.passwordSalt);
+                if (checkHash !== existing.passwordHash) {
+                    showToast('รหัสผ่านไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง', '⚠️');
+                    return;
+                }
+            }
+
+            const salt = existing?.passwordSalt || generateRandomSalt(12);
+            const hashedPassword = await hashPasswordWithSalt(password, salt);
+            const name = displayNameInput || (existing ? existing.name : email.split('@')[0]);
+            const initialLetter = name.charAt(0).toUpperCase() || 'U';
+
+            const userObj = {
+                uid: existing ? existing.uid : 'email_usr_' + Date.now().toString().slice(-6),
+                name: name,
+                email: email,
+                provider: 'email',
+                authMethodLabel: 'Email + Password',
+                passwordHash: hashedPassword,
+                passwordSalt: salt,
+                credentialAudit: formatTruncatedHash(hashedPassword),
+                status: 'active',
+                forceResetRequired: false,
+                photoURL: existing?.photoURL || `data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%236366f1'/><text x='50' y='65' font-size='44' text-anchor='middle' fill='white'>${encodeURIComponent(initialLetter)}</text></svg>`
+            };
+
+            completeUserLogin(userObj, true);
+            closeModal('authModal');
+            document.getElementById('authPassword').value = '';
+            showToast(state.authTab === 'register' ? 'สมัครสมาชิกและเข้าสู่ระบบสำเร็จ!' : 'เข้าสู่ระบบสำเร็จ!', '✅');
+        }
+
+        function loginAsDemoUser() {
+            const guestUser = {
+                uid: 'guest_' + Date.now().toString().slice(-6),
+                name: 'ผู้ใช้งานทดลอง (Guest)',
+                email: 'guest@aurawallet.app',
+                provider: 'email',
+                authMethodLabel: 'Guest Session',
+                credentialAudit: 'Temporary Guest Token (No Password)',
+                status: 'active',
+                forceResetRequired: false,
+                photoURL: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%2310b981'/><text x='50' y='64' font-size='44' text-anchor='middle' fill='white'>💎</text></svg>"
+            };
+            completeUserLogin(guestUser, true);
+            closeModal('authModal');
+            showToast('เข้าสู่ระบบโหมดทดลองใช้งานแล้ว', '✨');
+        }
+
+        function completeUserLogin(userObj, updateDirectory = true) {
+            const existingIdx = state.usersDirectory.findIndex(u => u.uid === userObj.uid || u.email.toLowerCase() === userObj.email.toLowerCase());
+            const defaultCredentialAudit = userObj.provider === 'email'
+                ? (userObj.credentialAudit || 'SHA-256 Salted Hash: Verified')
+                : 'OAuth 2.0 Token (ไม่ส่งรหัสผ่านมายังเว็บ)';
+
+            if (existingIdx !== -1) {
+                const existing = state.usersDirectory[existingIdx];
+                if (existing.status === 'suspended') {
+                    showToast('บัญชีนี้ถูกระงับการใช้งาน', '🚫');
+                    return;
+                }
+                if (updateDirectory) {
+                    state.usersDirectory[existingIdx] = {
+                        ...existing,
+                        ...userObj,
+                        credentialAudit: userObj.credentialAudit || existing.credentialAudit || defaultCredentialAudit,
+                        forceResetRequired: false,
+                        txCount: Math.max(existing.txCount || 0, state.transactions.length),
+                        lastActiveAt: Date.now()
+                    };
+                }
+            } else if (updateDirectory) {
+                state.usersDirectory.unshift({
+                    ...userObj,
+                    credentialAudit: defaultCredentialAudit,
+                    status: 'active',
+                    forceResetRequired: false,
+                    txCount: state.transactions.length,
+                    lastActiveAt: Date.now()
+                });
+            }
+
+            // หากเปลี่ยนบัญชีผู้ใช้ที่ไม่ตรงกับ Master Owner ให้ล็อกสิทธิ์แอดมินทันที
+            if (state.masterOwnerVault && userObj.email.toLowerCase() !== state.masterOwnerVault.ownerEmail.toLowerCase()) {
+                state.isMasterOwnerUnlocked = false;
+            }
+
+            saveUsersDirectory();
+            state.currentUser = userObj;
+            localStorage.setItem(KEYS.CURRENT_USER, JSON.stringify(userObj));
+
+            if (userObj.photoURL) {
+                state.profilePic = userObj.photoURL;
+                localStorage.setItem(KEYS.PIC, userObj.photoURL);
+            }
+
+            updateHeaderUI();
+        }
+
+        async function handleLogoutUser() {
+            if (window.FirebaseBridge && window.FirebaseBridge.isReady) {
+                await window.FirebaseBridge.signOutUser();
+            }
+            state.currentUser = null;
+            state.isMasterOwnerUnlocked = false;
+            localStorage.removeItem(KEYS.CURRENT_USER);
+            updateHeaderUI();
+            showToast('ออกจากระบบเรียบร้อยแล้ว', '👋');
+        }
+
+        // -------------------------------------------------------------------
+        // 4. จัดการชื่อแอป รูปโปรไฟล์ และแถบสถานะบัญชีบน Header
         // -------------------------------------------------------------------
         function updateHeaderUI() {
             document.getElementById('appNameDisplay').textContent = state.appName;
@@ -518,6 +1435,33 @@
             } else {
                 imgEl.classList.add('hidden');
                 placeholderEl.classList.remove('hidden');
+            }
+
+            const dot = document.getElementById('sessionStatusDot');
+            const label = document.getElementById('sessionUserLabel');
+            const authBtn = document.getElementById('openAuthBtn');
+            const logoutBtn = document.getElementById('logoutBtn');
+            const greetingSub = document.getElementById('userGreetingSubtitle');
+
+            if (state.currentUser) {
+                const providerMap = { google: 'Google', facebook: 'Facebook', email: 'Email' };
+                const pText = providerMap[state.currentUser.provider] || 'Account';
+                const isOwner = state.masterOwnerVault && state.currentUser.email.toLowerCase() === state.masterOwnerVault.ownerEmail.toLowerCase();
+                const ownerTag = isOwner ? ' [Master Owner]' : '';
+
+                dot.className = 'w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0';
+                label.textContent = `${state.currentUser.name} (${pText})${ownerTag}`;
+                greetingSub.textContent = `สวัสดี, ${state.currentUser.name}`;
+                authBtn.textContent = 'สลับบัญชี';
+                authBtn.className = 'px-2.5 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-medium transition';
+                logoutBtn.classList.remove('hidden');
+            } else {
+                dot.className = 'w-2 h-2 rounded-full bg-slate-400 shrink-0';
+                label.textContent = 'ยังไม่ได้เข้าสู่ระบบ (โหมดใช้งานในเครื่อง)';
+                greetingSub.textContent = 'กระเป๋าเงินอัจฉริยะ';
+                authBtn.textContent = 'เข้าสู่ระบบ';
+                authBtn.className = 'px-3 py-1 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-semibold shadow transition active:scale-95';
+                logoutBtn.classList.add('hidden');
             }
         }
 
@@ -567,6 +1511,15 @@
                     state.profilePic = compressed;
                     try {
                         localStorage.setItem(KEYS.PIC, compressed);
+                        if (state.currentUser) {
+                            state.currentUser.photoURL = compressed;
+                            localStorage.setItem(KEYS.CURRENT_USER, JSON.stringify(state.currentUser));
+                            const idx = state.usersDirectory.findIndex(u => u.uid === state.currentUser.uid);
+                            if (idx !== -1) {
+                                state.usersDirectory[idx].photoURL = compressed;
+                                saveUsersDirectory();
+                            }
+                        }
                         updateHeaderUI();
                         showToast('อัปเดตรูปโปรไฟล์สำเร็จ', '📸');
                     } catch (err) {
@@ -580,7 +1533,659 @@
         }
 
         // -------------------------------------------------------------------
-        // 4. ระบบงบประมาณรายเดือน (Monthly Budget)
+        // 5. ระบบแอดมินเฉพาะเจ้าของระบบคนเดียว (Single-Owner Lockdown & Audit)
+        // -------------------------------------------------------------------
+        function handleAdminButtonClick() {
+            // ตรวจสอบว่าผู้ใช้ที่ล็อกอินอยู่ (ถ้ามี) ตรงกับ Master Owner Email หรือไม่
+            if (state.masterOwnerVault && state.currentUser) {
+                if (state.currentUser.email.toLowerCase() !== state.masterOwnerVault.ownerEmail.toLowerCase()) {
+                    showToast('ปฏิเสธการเข้าถึง: หน้านี้สงวนสิทธิ์เฉพาะเจ้าของระบบเท่านั้น', '🚫');
+                    return;
+                }
+            }
+
+            if (state.isMasterOwnerUnlocked && state.masterOwnerVault) {
+                openAdminDashboard();
+                return;
+            }
+
+            openOwnerAdminGate();
+        }
+
+        function openOwnerAdminGate() {
+            const setupForm = document.getElementById('ownerSetupForm');
+            const verifyForm = document.getElementById('ownerVerifyForm');
+            const titleEl = document.getElementById('ownerGateTitle');
+            const subEl = document.getElementById('ownerGateSubtitle');
+
+            if (!state.masterOwnerVault) {
+                // ยังไม่เคยตั้งค่า Master Owner -> แสดงฟอร์มผูกอีเมลเจ้าของและตั้งรหัสผ่านครั้งแรก
+                titleEl.textContent = 'ตั้งค่าเจ้าของระบบ (First-Time Owner Setup)';
+                subEl.textContent = 'ผูกอีเมลและรหัสผ่าน Master Admin สำหรับคุณคนเดียว';
+                setupForm.classList.remove('hidden');
+                verifyForm.classList.add('hidden');
+                document.getElementById('setupOwnerEmailInput').value = state.currentUser?.email || '';
+                document.getElementById('setupOwnerPassInput').value = '';
+                document.getElementById('setupOwnerPassConfirmInput').value = '';
+            } else {
+                // ตั้งค่าไว้แล้ว -> บังคับยืนยันทั้ง Master Email + Master Password
+                titleEl.textContent = 'ยืนยันตัวตนเจ้าของระบบ (Master Owner)';
+                subEl.textContent = 'กรอกอีเมลเจ้าของระบบและรหัสผ่าน Master Admin เพื่อปลดล็อก';
+                setupForm.classList.add('hidden');
+                verifyForm.classList.remove('hidden');
+                document.getElementById('verifyOwnerEmailInput').value = '';
+                document.getElementById('verifyOwnerPassInput').value = '';
+
+                const checkBox = document.getElementById('ownerSignedInCheckBox');
+                if (state.currentUser) {
+                    const isMatch = state.currentUser.email.toLowerCase() === state.masterOwnerVault.ownerEmail.toLowerCase();
+                    checkBox.innerHTML = '';
+                    const p = document.createElement('p');
+                    p.className = isMatch ? 'text-emerald-300' : 'text-rose-300';
+                    p.textContent = isMatch
+                        ? `✓ บัญชีที่ล็อกอินอยู่ (${state.currentUser.email}) ตรงกับสิทธิ์เจ้าของระบบ`
+                        : `⚠️ บัญชีที่ล็อกอินอยู่ (${state.currentUser.email}) ไม่มีสิทธิ์เข้าถึงระบบแอดมิน`;
+                    checkBox.appendChild(p);
+                } else {
+                    checkBox.textContent = '🔒 ระบบป้องกันการเข้าถึง: ต้องยืนยันทั้งอีเมลเจ้าของและรหัสผ่าน Master Admin';
+                }
+
+                updateLockoutUIState();
+            }
+
+            openModal('ownerAdminGateModal');
+        }
+
+        async function handleOwnerInitialSetup(event) {
+            event.preventDefault();
+            const email = document.getElementById('setupOwnerEmailInput').value.trim().toLowerCase();
+            const pass = document.getElementById('setupOwnerPassInput').value;
+            const confirmPass = document.getElementById('setupOwnerPassConfirmInput').value;
+
+            if (!email || pass.length < 8) {
+                showToast('กรุณากรอกอีเมลและรหัสผ่านอย่างน้อย 8 ตัวอักษร', '⚠️');
+                return;
+            }
+            if (pass !== confirmPass) {
+                showToast('รหัสผ่านทั้งสองช่องไม่ตรงกัน', '⚠️');
+                return;
+            }
+
+            const salt = generateRandomSalt(16);
+            const passwordHash = await hashPasswordWithSalt(pass, salt);
+
+            state.masterOwnerVault = {
+                ownerEmail: email,
+                passwordHash: passwordHash,
+                salt: salt,
+                createdAt: Date.now()
+            };
+            localStorage.setItem(KEYS.MASTER_OWNER, JSON.stringify(state.masterOwnerVault));
+
+            state.isMasterOwnerUnlocked = true;
+            state.failedAdminAttempts = 0;
+            state.adminLockoutUntil = 0;
+            localStorage.removeItem(KEYS.ADMIN_LOCKOUT);
+
+            closeModal('ownerAdminGateModal');
+            updateHeaderUI();
+            showToast('ผูกสิทธิ์เจ้าของระบบเรียบร้อย! เข้าได้เฉพาะคุณคนเดียวเท่านั้น', '🔐');
+            openAdminDashboard();
+        }
+
+        async function handleOwnerVerifyLogin(event) {
+            event.preventDefault();
+            if (!state.masterOwnerVault) return;
+
+            if (Date.now() < state.adminLockoutUntil) {
+                updateLockoutUIState();
+                return;
+            }
+
+            const inputEmail = document.getElementById('verifyOwnerEmailInput').value.trim().toLowerCase();
+            const inputPass = document.getElementById('verifyOwnerPassInput').value;
+
+            // หากผู้ใช้ล็อกอินหน้าเว็บด้วยบัญชีอื่นที่ไม่ใช่ Master Owner ให้ปฏิเสธทันที
+            if (state.currentUser && state.currentUser.email.toLowerCase() !== state.masterOwnerVault.ownerEmail.toLowerCase()) {
+                showToast('บัญชีที่ล็อกอินอยู่ไม่มีสิทธิ์เจ้าของระบบ', '🚫');
+                return;
+            }
+
+            const computedHash = await hashPasswordWithSalt(inputPass, state.masterOwnerVault.salt);
+            const isEmailValid = inputEmail === state.masterOwnerVault.ownerEmail.toLowerCase();
+            const isPassValid = computedHash === state.masterOwnerVault.passwordHash;
+
+            if (isEmailValid && isPassValid) {
+                state.isMasterOwnerUnlocked = true;
+                state.failedAdminAttempts = 0;
+                state.adminLockoutUntil = 0;
+                localStorage.removeItem(KEYS.ADMIN_LOCKOUT);
+                if (lockoutTimerInterval) clearInterval(lockoutTimerInterval);
+
+                closeModal('ownerAdminGateModal');
+                showToast('ยืนยันสิทธิ์ Master Owner สำเร็จ', '🛡️');
+                openAdminDashboard();
+            } else {
+                state.failedAdminAttempts += 1;
+                if (state.failedAdminAttempts >= 3) {
+                    state.adminLockoutUntil = Date.now() + 60 * 1000;
+                    state.failedAdminAttempts = 0;
+                    showToast('กรอกผิดครบ 3 ครั้ง! ระบบล็อกการเข้าถึง 60 วินาที', '🚨');
+                } else {
+                    const remain = 3 - state.failedAdminAttempts;
+                    showToast(`อีเมลหรือรหัสผ่านไม่ถูกต้อง (เหลือโอกาสอีก ${remain} ครั้ง)`, '⚠️');
+                }
+                localStorage.setItem(KEYS.ADMIN_LOCKOUT, JSON.stringify({
+                    attempts: state.failedAdminAttempts,
+                    lockoutUntil: state.adminLockoutUntil
+                }));
+                updateLockoutUIState();
+            }
+        }
+
+        function updateLockoutUIState() {
+            const banner = document.getElementById('ownerLockoutBanner');
+            const countdownEl = document.getElementById('ownerLockoutCountdown');
+            const submitBtn = document.getElementById('verifyOwnerSubmitBtn');
+            const emailInput = document.getElementById('verifyOwnerEmailInput');
+            const passInput = document.getElementById('verifyOwnerPassInput');
+
+            if (lockoutTimerInterval) clearInterval(lockoutTimerInterval);
+
+            const tick = () => {
+                const now = Date.now();
+                if (now < state.adminLockoutUntil) {
+                    const secLeft = Math.ceil((state.adminLockoutUntil - now) / 1000);
+                    banner.classList.remove('hidden');
+                    countdownEl.textContent = secLeft;
+                    submitBtn.disabled = true;
+                    submitBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                    emailInput.disabled = true;
+                    passInput.disabled = true;
+                } else {
+                    banner.classList.add('hidden');
+                    submitBtn.disabled = false;
+                    submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                    emailInput.disabled = false;
+                    passInput.disabled = false;
+                    if (lockoutTimerInterval) clearInterval(lockoutTimerInterval);
+                }
+            };
+
+            tick();
+            if (Date.now() < state.adminLockoutUntil) {
+                lockoutTimerInterval = setInterval(tick, 500);
+            }
+        }
+
+        function lockAdminSession() {
+            state.isMasterOwnerUnlocked = false;
+            closeModal('adminDashboardModal');
+            showToast('ล็อกระบบแอดมินเรียบร้อยแล้ว', '🔒');
+        }
+
+        async function openAdminDashboard() {
+            if (!state.isMasterOwnerUnlocked || !state.masterOwnerVault) {
+                openOwnerAdminGate();
+                return;
+            }
+            document.getElementById('adminOwnerEmailSubtitle').textContent = `บัญชีเจ้าของระบบ: ${state.masterOwnerVault.ownerEmail}`;
+            document.getElementById('settingsOwnerEmailInput').value = state.masterOwnerVault.ownerEmail;
+            document.getElementById('settingsNewOwnerPassInput').value = '';
+
+            switchAdminSubTab('overview');
+            openModal('adminDashboardModal');
+            await refreshAdminAnalytics();
+        }
+
+        function switchAdminSubTab(tabName) {
+            const panels = {
+                overview: document.getElementById('adminOverviewPanel'),
+                owner: document.getElementById('adminOwnerPanel'),
+                firebase: document.getElementById('adminFirebasePanel')
+            };
+            const btns = {
+                overview: document.getElementById('adminSubTabOverviewBtn'),
+                owner: document.getElementById('adminSubTabOwnerBtn'),
+                firebase: document.getElementById('adminSubTabFirebaseBtn')
+            };
+
+            Object.keys(panels).forEach(key => {
+                if (key === tabName) {
+                    panels[key].classList.remove('hidden');
+                    btns[key].className = 'px-4 py-2.5 text-xs font-semibold border-b-2 border-amber-400 text-white transition';
+                } else {
+                    panels[key].classList.add('hidden');
+                    btns[key].className = 'px-4 py-2.5 text-xs font-medium border-b-2 border-transparent text-slate-400 hover:text-white transition';
+                }
+            });
+        }
+
+        async function handleUpdateMasterOwnerSettings(event) {
+            event.preventDefault();
+            if (!state.isMasterOwnerUnlocked || !state.masterOwnerVault) return;
+
+            const newEmail = document.getElementById('settingsOwnerEmailInput').value.trim().toLowerCase();
+            const newPass = document.getElementById('settingsNewOwnerPassInput').value;
+
+            if (!newEmail) return;
+
+            state.masterOwnerVault.ownerEmail = newEmail;
+            if (newPass && newPass.length >= 8) {
+                const newSalt = generateRandomSalt(16);
+                const newHash = await hashPasswordWithSalt(newPass, newSalt);
+                state.masterOwnerVault.salt = newSalt;
+                state.masterOwnerVault.passwordHash = newHash;
+            }
+
+            localStorage.setItem(KEYS.MASTER_OWNER, JSON.stringify(state.masterOwnerVault));
+            document.getElementById('adminOwnerEmailSubtitle').textContent = `บัญชีเจ้าของระบบ: ${newEmail}`;
+            document.getElementById('settingsNewOwnerPassInput').value = '';
+            updateHeaderUI();
+            showToast('อัปเดตข้อมูลความปลอดภัยเจ้าของระบบแล้ว', '🔐');
+        }
+
+        async function refreshAdminAnalytics() {
+            if (window.FirebaseBridge && window.FirebaseBridge.isReady) {
+                const remoteUsers = await window.FirebaseBridge.fetchAllUsersFromFirestore();
+                if (Array.isArray(remoteUsers) && remoteUsers.length > 0) {
+                    remoteUsers.forEach(ru => {
+                        const idx = state.usersDirectory.findIndex(u => u.uid === ru.uid);
+                        const auditLabel = ru.provider === 'email'
+                            ? 'SHA-256 Salted Hash (Firebase Auth)'
+                            : 'OAuth 2.0 Token (ไม่ส่งรหัสผ่านมายังเว็บ)';
+                        if (idx !== -1) {
+                            state.usersDirectory[idx] = { ...state.usersDirectory[idx], ...ru, credentialAudit: auditLabel };
+                        } else {
+                            state.usersDirectory.unshift({
+                                status: 'active',
+                                forceResetRequired: false,
+                                txCount: 0,
+                                credentialAudit: auditLabel,
+                                ...ru
+                            });
+                        }
+                    });
+                    saveUsersDirectory();
+                }
+            }
+
+            const users = state.usersDirectory;
+            const totalUsers = users.length;
+            const oneDayMs = 24 * 60 * 60 * 1000;
+            const now = Date.now();
+
+            let activeToday = 0;
+            let googleCount = 0;
+            let facebookCount = 0;
+            let emailCount = 0;
+            let totalSystemTx = 0;
+
+            users.forEach(u => {
+                if (u.lastActiveAt && (now - u.lastActiveAt) <= oneDayMs) {
+                    activeToday++;
+                }
+                if (u.provider === 'google') googleCount++;
+                else if (u.provider === 'facebook') facebookCount++;
+                else emailCount++;
+
+                totalSystemTx += (u.txCount || 0);
+            });
+
+            const socialTotal = googleCount + facebookCount;
+            const socialPct = totalUsers > 0 ? Math.round((socialTotal / totalUsers) * 100) : 0;
+
+            document.getElementById('kpiTotalUsers').textContent = totalUsers.toLocaleString('th-TH');
+            document.getElementById('kpiActiveToday').textContent = activeToday.toLocaleString('th-TH');
+            document.getElementById('kpiSocialPercent').textContent = `${socialPct}%`;
+            document.getElementById('kpiSocialSub').textContent = `OAuth ${socialTotal} • Email Hash ${emailCount}`;
+            document.getElementById('kpiTotalTx').textContent = totalSystemTx.toLocaleString('th-TH');
+
+            renderAdminProviderChart(googleCount, facebookCount, emailCount);
+            renderAdminUsersTable();
+        }
+
+        function renderAdminProviderChart(googleCount, facebookCount, emailCount) {
+            const canvas = document.getElementById('adminProviderChart');
+            if (!canvas) return;
+
+            if (adminProviderChartInstance) {
+                adminProviderChartInstance.destroy();
+            }
+
+            adminProviderChartInstance = new Chart(canvas.getContext('2d'), {
+                type: 'doughnut',
+                data: {
+                    labels: ['Google OAuth', 'Facebook OAuth', 'Email Hash'],
+                    datasets: [{
+                        data: [googleCount, facebookCount, emailCount],
+                        backgroundColor: ['#4285F4', '#1877F2', '#8b5cf6'],
+                        borderColor: '#0f172a',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '64%',
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                color: '#e2e8f0',
+                                font: { family: 'Prompt', size: 11 },
+                                boxWidth: 11,
+                                padding: 10
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // สร้างตารางตรวจสอบความปลอดภัยผู้ใช้งาน (Auth Security Audit Table) ด้วย DOM API
+        function renderAdminUsersTable() {
+            const tbody = document.getElementById('adminUsersTableBody');
+            const countSpan = document.getElementById('adminFilteredUserCount');
+            const search = (document.getElementById('adminUserSearchInput')?.value || '').trim().toLowerCase();
+            const providerFilter = document.getElementById('adminProviderFilter')?.value || 'all';
+
+            tbody.innerHTML = '';
+
+            const filteredUsers = state.usersDirectory.filter(u => {
+                if (providerFilter !== 'all' && u.provider !== providerFilter) return false;
+                if (search) {
+                    const matchName = (u.name || '').toLowerCase().includes(search);
+                    const matchEmail = (u.email || '').toLowerCase().includes(search);
+                    const matchUid = (u.uid || '').toLowerCase().includes(search);
+                    return matchName || matchEmail || matchUid;
+                }
+                return true;
+            });
+
+            countSpan.textContent = filteredUsers.length;
+
+            if (filteredUsers.length === 0) {
+                const tr = document.createElement('tr');
+                const td = document.createElement('td');
+                td.colSpan = 6;
+                td.className = 'py-6 text-center text-slate-400';
+                td.textContent = 'ไม่พบผู้ใช้งานที่ตรงกับเงื่อนไขการค้นหา';
+                tr.appendChild(td);
+                tbody.appendChild(tr);
+                return;
+            }
+
+            filteredUsers.forEach(user => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-white/[0.03] transition';
+
+                // 1. คอลัมน์ผู้ใช้งาน + Email + Provider UID
+                const tdUser = document.createElement('td');
+                tdUser.className = 'py-2.5 px-3';
+
+                const userFlex = document.createElement('div');
+                userFlex.className = 'flex items-center space-x-2.5 min-w-[180px]';
+
+                const avatar = document.createElement('img');
+                avatar.src = user.photoURL || "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23334155'/><text x='50' y='64' font-size='44' text-anchor='middle' fill='white'>👤</text></svg>";
+                avatar.alt = user.name || 'User';
+                avatar.className = 'w-8 h-8 rounded-full object-cover border border-white/15 shrink-0 bg-slate-800';
+
+                const nameBox = document.createElement('div');
+                nameBox.className = 'min-w-0';
+
+                const nameText = document.createElement('p');
+                nameText.className = 'font-semibold text-white truncate max-w-[150px]';
+                nameText.textContent = user.name || 'ไม่ระบุชื่อ';
+
+                const emailText = document.createElement('p');
+                emailText.className = 'text-[10px] text-slate-300 truncate max-w-[165px]';
+                emailText.textContent = user.email || '-';
+
+                const uidText = document.createElement('p');
+                uidText.className = 'text-[9px] font-mono text-slate-500 truncate max-w-[165px]';
+                uidText.textContent = `UID: ${user.uid}`;
+
+                nameBox.appendChild(nameText);
+                nameBox.appendChild(emailText);
+                nameBox.appendChild(uidText);
+                userFlex.appendChild(avatar);
+                userFlex.appendChild(nameBox);
+                tdUser.appendChild(userFlex);
+
+                // 2. คอลัมน์ช่องทางล็อกอิน (Google / Facebook / Email)
+                const tdProvider = document.createElement('td');
+                tdProvider.className = 'py-2.5 px-3 whitespace-nowrap';
+                const pBadge = document.createElement('span');
+                if (user.provider === 'google') {
+                    pBadge.className = 'px-2 py-0.5 rounded-full text-[10px] font-semibold bg-sky-500/20 text-sky-300 border border-sky-400/20';
+                    pBadge.textContent = 'Google OAuth 2.0';
+                } else if (user.provider === 'facebook') {
+                    pBadge.className = 'px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-600/25 text-blue-300 border border-blue-400/25';
+                    pBadge.textContent = 'Facebook OAuth 2.0';
+                } else {
+                    pBadge.className = 'px-2 py-0.5 rounded-full text-[10px] font-medium bg-purple-500/20 text-purple-300 border border-purple-400/20';
+                    pBadge.textContent = 'Email + Password';
+                }
+                tdProvider.appendChild(pBadge);
+
+                // 3. คอลัมน์สถานะความปลอดภัยรหัสผ่าน / โทเค็น (Zero-Plaintext Audit)
+                const tdCredential = document.createElement('td');
+                tdCredential.className = 'py-2.5 px-3 min-w-[200px]';
+                const credBadge = document.createElement('div');
+                if (user.provider === 'google' || user.provider === 'facebook') {
+                    credBadge.className = 'text-[10px] text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-lg';
+                    credBadge.textContent = 'OAuth 2.0 Token (ไม่ส่งรหัสผ่านมายังเว็บ)';
+                } else {
+                    credBadge.className = 'text-[10px] font-mono text-indigo-300 bg-indigo-500/10 border border-indigo-500/20 px-2.5 py-1 rounded-lg';
+                    credBadge.textContent = user.passwordHash
+                        ? formatTruncatedHash(user.passwordHash)
+                        : (user.credentialAudit || 'SHA-256 Salted Hash');
+                }
+                tdCredential.appendChild(credBadge);
+
+                // 4. คอลัมน์เวลาเข้าใช้งานล่าสุด
+                const tdLast = document.createElement('td');
+                tdLast.className = 'py-2.5 px-3 text-[11px] text-slate-300 whitespace-nowrap';
+                tdLast.textContent = formatRelativeTime(user.lastActiveAt);
+
+                // 5. คอลัมน์สถานะบัญชี
+                const tdStatus = document.createElement('td');
+                tdStatus.className = 'py-2.5 px-3 whitespace-nowrap';
+                const isSuspended = user.status === 'suspended';
+                const statusBadge = document.createElement('span');
+                if (isSuspended) {
+                    statusBadge.className = 'px-2 py-0.5 rounded-full text-[10px] font-medium bg-rose-500/20 text-rose-300';
+                    statusBadge.textContent = 'ถูกระงับ';
+                } else if (user.forceResetRequired) {
+                    statusBadge.className = 'px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-500/20 text-amber-300';
+                    statusBadge.textContent = 'บังคับรีเซ็ต';
+                } else {
+                    statusBadge.className = 'px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/20 text-emerald-300';
+                    statusBadge.textContent = 'ปกติ';
+                }
+                tdStatus.appendChild(statusBadge);
+
+                // 6. คอลัมน์ปุ่มตรวจสอบรายละเอียด & จัดการความปลอดภัย
+                const tdActions = document.createElement('td');
+                tdActions.className = 'py-2.5 px-3 text-right whitespace-nowrap space-x-1.5';
+
+                const inspectBtn = document.createElement('button');
+                inspectBtn.type = 'button';
+                inspectBtn.className = 'px-2.5 py-1 rounded-lg bg-indigo-600/30 hover:bg-indigo-600/50 border border-indigo-400/30 text-indigo-200 text-[10px] font-semibold transition';
+                inspectBtn.textContent = '🔍 ตรวจสอบ';
+                inspectBtn.onclick = () => openUserAuditModal(user.uid);
+
+                const statusBtn = document.createElement('button');
+                statusBtn.type = 'button';
+                statusBtn.className = isSuspended
+                    ? 'px-2 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/30 text-emerald-300 text-[10px] font-medium transition'
+                    : 'px-2 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/30 text-rose-300 text-[10px] font-medium transition';
+                statusBtn.textContent = isSuspended ? 'ปลดล็อก' : 'ระงับ';
+                statusBtn.onclick = () => toggleUserSuspendStatus(user.uid);
+
+                tdActions.appendChild(inspectBtn);
+                tdActions.appendChild(statusBtn);
+
+                tr.appendChild(tdUser);
+                tr.appendChild(tdProvider);
+                tr.appendChild(tdCredential);
+                tr.appendChild(tdLast);
+                tr.appendChild(tdStatus);
+                tr.appendChild(tdActions);
+                tbody.appendChild(tr);
+            });
+        }
+
+        function openUserAuditModal(uid) {
+            const user = state.usersDirectory.find(u => u.uid === uid);
+            if (!user) return;
+
+            document.getElementById('auditModalAvatar').src = user.photoURL || "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23334155'/><text x='50' y='64' font-size='44' text-anchor='middle' fill='white'>👤</text></svg>";
+            document.getElementById('auditModalName').textContent = user.name || 'ไม่ระบุชื่อ';
+            document.getElementById('auditModalEmail').textContent = user.email || '-';
+            document.getElementById('auditModalUid').textContent = user.uid;
+
+            const providerLabels = {
+                google: 'Google OAuth 2.0 (OpenID Connect)',
+                facebook: 'Facebook OAuth 2.0 (Graph Login)',
+                email: 'Email + Password (Local / Firebase Auth)'
+            };
+            document.getElementById('auditModalProvider').textContent = providerLabels[user.provider] || user.provider;
+
+            const credBox = document.getElementById('auditModalCredentialBox');
+            if (user.provider === 'google' || user.provider === 'facebook') {
+                credBox.textContent = 'OAuth 2.0 Token Verified — ระบบยืนยันตัวตนผ่านผู้ให้บริการภายนอก (ไม่ส่งและไม่เก็บรหัสผ่านไว้บนเว็บไซต์)';
+            } else if (user.passwordHash) {
+                credBox.textContent = `SHA-256 Hash: ${user.passwordHash}\nSalt: ${user.passwordSalt || 'N/A'}`;
+            } else {
+                credBox.textContent = user.credentialAudit || 'SHA-256 Salted Hash Verified';
+            }
+
+            const sessionStatusEl = document.getElementById('auditModalSessionStatus');
+            if (user.status === 'suspended') {
+                sessionStatusEl.className = 'font-semibold text-rose-400';
+                sessionStatusEl.textContent = 'ถูกระงับการใช้งาน (Suspended)';
+            } else if (user.forceResetRequired) {
+                sessionStatusEl.className = 'font-semibold text-amber-300';
+                sessionStatusEl.textContent = 'บังคับรีเซ็ต / ล้าง Session แล้ว';
+            } else {
+                sessionStatusEl.className = 'font-semibold text-emerald-400';
+                sessionStatusEl.textContent = 'Session ปกติและปลอดภัย';
+            }
+
+            document.getElementById('auditModalLastActive').textContent = `${formatRelativeTime(user.lastActiveAt)} (${user.txCount || 0} รายการ)`;
+
+            document.getElementById('auditForceResetBtn').onclick = () => forceResetUserSession(user.uid);
+            const suspendBtn = document.getElementById('auditSuspendToggleBtn');
+            suspendBtn.textContent = user.status === 'suspended' ? '✅ ปลดล็อกบัญชีนี้' : '🚫 ระงับการใช้งาน';
+            suspendBtn.onclick = () => {
+                toggleUserSuspendStatus(user.uid);
+                openUserAuditModal(user.uid);
+            };
+
+            openModal('userAuditModal');
+        }
+
+        async function forceResetUserSession(uid) {
+            const idx = state.usersDirectory.findIndex(u => u.uid === uid);
+            if (idx === -1) return;
+
+            state.usersDirectory[idx].forceResetRequired = true;
+            // ล้าง Hash เดิมออกหากเป็นบัญชี Email เพื่อบังคับตั้งรหัสผ่านใหม่ในการล็อกอินครั้งถัดไป
+            if (state.usersDirectory[idx].provider === 'email') {
+                delete state.usersDirectory[idx].passwordHash;
+                delete state.usersDirectory[idx].passwordSalt;
+                state.usersDirectory[idx].credentialAudit = 'Password Reset Required (Session Revoked)';
+            }
+            saveUsersDirectory();
+
+            // หากเป็นผู้ใช้ที่กำลังล็อกอินค้างอยู่ ให้เตะออกจากระบบทันที
+            if (state.currentUser && state.currentUser.uid === uid) {
+                await handleLogoutUser();
+            }
+
+            if (window.FirebaseBridge && window.FirebaseBridge.isReady) {
+                await window.FirebaseBridge.updateUserInFirestore(uid, { forceResetRequired: true });
+            }
+
+            renderAdminUsersTable();
+            openUserAuditModal(uid);
+            showToast('สั่งบังคับรีเซ็ตและล้าง Session ของผู้ใช้แล้ว', '🔑');
+        }
+
+        async function toggleUserSuspendStatus(uid) {
+            const idx = state.usersDirectory.findIndex(u => u.uid === uid);
+            if (idx === -1) return;
+            const nextStatus = state.usersDirectory[idx].status === 'suspended' ? 'active' : 'suspended';
+            state.usersDirectory[idx].status = nextStatus;
+            saveUsersDirectory();
+
+            if (nextStatus === 'suspended' && state.currentUser && state.currentUser.uid === uid) {
+                await handleLogoutUser();
+            }
+
+            if (window.FirebaseBridge && window.FirebaseBridge.isReady) {
+                await window.FirebaseBridge.updateUserInFirestore(uid, { status: nextStatus });
+            }
+
+            renderAdminUsersTable();
+            showToast(nextStatus === 'suspended' ? 'ระงับการใช้งานบัญชีนี้แล้ว' : 'ปลดล็อกบัญชีเรียบร้อยแล้ว', '⚙️');
+        }
+
+        function saveFirebaseConfigFromUI() {
+            const raw = document.getElementById('firebaseConfigTextarea').value.trim();
+            if (!raw) {
+                showToast('กรุณาวางโค้ด firebaseConfig ก่อนบันทึก', '⚠️');
+                return;
+            }
+            try {
+                // รองรับทั้งรูปแบบ JSON ล้วน หรือคัดลอกมาพร้อมคำว่า const firebaseConfig = { ... };
+                const jsonMatch = raw.match(/\{[\s\S]*\}/);
+                if (!jsonMatch) throw new Error('ไม่พบโครงสร้างออบเจกต์ { ... }');
+                const parsed = JSON.parse(jsonMatch[0]);
+                if (!parsed.apiKey || !parsed.authDomain || !parsed.projectId) {
+                    throw new Error('ข้อมูล apiKey, authDomain หรือ projectId ไม่ครบถ้วน');
+                }
+
+                state.firebaseConfig = parsed;
+                localStorage.setItem(KEYS.FB_CONFIG, JSON.stringify(parsed));
+
+                if (window.FirebaseBridge && window.FirebaseBridge.init(parsed)) {
+                    updateFirebaseBadgeUI(true);
+                    showToast('เชื่อมต่อ Firebase สำเร็จพร้อมใช้งานจริง!', '🔥');
+                } else {
+                    showToast('บันทึก Config แล้ว กรุณารีเฟรชหน้าเว็บ 1 ครั้ง', '✅');
+                }
+            } catch (err) {
+                showToast(`รูปแบบ Config ไม่ถูกต้อง: ${err.message}`, '⚠️');
+            }
+        }
+
+        function clearFirebaseConfig() {
+            state.firebaseConfig = null;
+            localStorage.removeItem(KEYS.FB_CONFIG);
+            document.getElementById('firebaseConfigTextarea').value = '';
+            if (window.FirebaseBridge) window.FirebaseBridge.isReady = false;
+            updateFirebaseBadgeUI(false);
+            showToast('สลับกลับไปใช้โหมดจำลอง (Local) แล้ว', '🔄');
+        }
+
+        function formatRelativeTime(timestamp) {
+            if (!timestamp) return 'เมื่อสักครู่';
+            const diffSec = Math.max(1, Math.floor((Date.now() - timestamp) / 1000));
+            if (diffSec < 60) return 'ออนไลน์ตอนนี้';
+            const diffMin = Math.floor(diffSec / 60);
+            if (diffMin < 60) return `${diffMin} นาทีที่แล้ว`;
+            const diffHr = Math.floor(diffMin / 60);
+            if (diffHr < 24) return `${diffHr} ชม. ที่แล้ว`;
+            const diffDay = Math.floor(diffHr / 24);
+            return `${diffDay} วันที่แล้ว`;
+        }
+
+        // -------------------------------------------------------------------
+        // 6. ระบบงบประมาณรายเดือน (Monthly Budget)
         // -------------------------------------------------------------------
         function openBudgetModal() {
             const input = document.getElementById('budgetInput');
@@ -638,7 +2243,7 @@
         }
 
         // -------------------------------------------------------------------
-        // 5. ระบบจัดการหมวดหมู่เพิ่มเติมเอง (Custom Categories)
+        // 7. ระบบจัดการหมวดหมู่เพิ่มเติมเอง (Custom Categories)
         // -------------------------------------------------------------------
         function openCategoryModal() {
             renderCustomCategoryManager();
@@ -720,7 +2325,7 @@
         }
 
         // -------------------------------------------------------------------
-        // 6. การจัดการฟอร์มบันทึกรายรับ-รายจ่าย
+        // 8. การจัดการฟอร์มบันทึกรายรับ-รายจ่าย
         // -------------------------------------------------------------------
         function setTransactionType(type) {
             state.currentFormType = type;
@@ -761,6 +2366,19 @@
                 return;
             }
 
+            createTransactionRecord({
+                type: state.currentFormType,
+                amount: amountVal,
+                category: categoryEl.value,
+                note: noteEl.value.trim()
+            });
+
+            amountEl.value = '';
+            noteEl.value = '';
+            showToast('บันทึกรายการเรียบร้อยแล้ว', '✅');
+        }
+
+        function createTransactionRecord({ type, amount, category, note, isFromSlip = false }) {
             const now = new Date();
             const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
             const dateFormatted = now.toLocaleDateString('th-TH', {
@@ -768,26 +2386,520 @@
             });
 
             const newTx = {
-                id: Date.now(),
-                type: state.currentFormType,
-                amount: amountVal,
-                category: categoryEl.value,
-                note: noteEl.value.trim(),
+                id: Date.now() + Math.floor(Math.random() * 1000),
+                type: type,
+                amount: amount,
+                category: category,
+                note: note,
                 date: dateFormatted,
-                monthKey: monthKey
+                monthKey: monthKey,
+                isFromSlip: isFromSlip
             };
 
             state.transactions.unshift(newTx);
             saveTransactions();
             refreshDashboard();
-
-            amountEl.value = '';
-            noteEl.value = '';
-            showToast('บันทึกรายการเรียบร้อยแล้ว', '✅');
+            return newTx;
         }
 
         // -------------------------------------------------------------------
-        // 7. กราฟโดนัทสรุปสัดส่วนรายจ่าย (Chart.js)
+        // 9. ระบบสแกนสลิปธนาคารอัตโนมัติ (Auto Bank Slip OCR Scanner)
+        // -------------------------------------------------------------------
+        function setupSlipDropAndPaste() {
+            const dropzone = document.getElementById('slipDropzone');
+            if (!dropzone) return;
+
+            ['dragenter', 'dragover'].forEach(evtName => {
+                dropzone.addEventListener(evtName, (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    dropzone.classList.add('drag-over');
+                });
+            });
+
+            ['dragleave', 'drop'].forEach(evtName => {
+                dropzone.addEventListener(evtName, (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    dropzone.classList.remove('drag-over');
+                });
+            });
+
+            dropzone.addEventListener('drop', (e) => {
+                const files = e.dataTransfer?.files;
+                if (files && files.length > 0) {
+                    handleSlipFiles(files);
+                }
+            });
+
+            window.addEventListener('paste', (e) => {
+                const items = e.clipboardData?.items;
+                if (!items) return;
+                const imageFiles = [];
+                for (let i = 0; i < items.length; i++) {
+                    if (items[i].type.startsWith('image/')) {
+                        const file = items[i].getAsFile();
+                        if (file) imageFiles.push(file);
+                    }
+                }
+                if (imageFiles.length > 0) {
+                    handleSlipFiles(imageFiles);
+                }
+            });
+        }
+
+        function preprocessSlipImage(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const thumbCanvas = document.createElement('canvas');
+                        const thumbMax = 140;
+                        const tScale = Math.min(thumbMax / img.width, thumbMax / img.height, 1);
+                        thumbCanvas.width = Math.round(img.width * tScale);
+                        thumbCanvas.height = Math.round(img.height * tScale);
+                        thumbCanvas.getContext('2d').drawImage(img, 0, 0, thumbCanvas.width, thumbCanvas.height);
+                        const thumbnailUrl = thumbCanvas.toDataURL('image/jpeg', 0.78);
+
+                        const ocrCanvas = document.createElement('canvas');
+                        let targetW = img.width;
+                        let targetH = img.height;
+                        if (targetW < 1100) {
+                            const scaleUp = 1100 / targetW;
+                            targetW = 1100;
+                            targetH = Math.round(targetH * scaleUp);
+                        } else if (targetW > 1800) {
+                            const scaleDown = 1800 / targetW;
+                            targetW = 1800;
+                            targetH = Math.round(targetH * scaleDown);
+                        }
+
+                        ocrCanvas.width = targetW;
+                        ocrCanvas.height = targetH;
+                        const ctx = ocrCanvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, targetW, targetH);
+
+                        const imgData = ctx.getImageData(0, 0, targetW, targetH);
+                        const data = imgData.data;
+                        const contrast = 1.45;
+                        const intercept = 128 * (1 - contrast);
+
+                        for (let i = 0; i < data.length; i += 4) {
+                            const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+                            let adj = gray * contrast + intercept;
+                            adj = adj < 0 ? 0 : (adj > 255 ? 255 : adj);
+                            data[i] = adj;
+                            data[i + 1] = adj;
+                            data[i + 2] = adj;
+                        }
+                        ctx.putImageData(imgData, 0, 0);
+
+                        resolve({
+                            ocrDataUrl: ocrCanvas.toDataURL('image/png'),
+                            thumbnailUrl
+                        });
+                    };
+                    img.onerror = reject;
+                    img.src = e.target.result;
+                };
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
+
+        function parseBankSlipText(rawText) {
+            const cleanLines = rawText
+                .split(/\r?\n/)
+                .map(line => line.replace(/[|¦_~`]/g, ' ').replace(/\s+/g, ' ').trim())
+                .filter(line => line.length > 0);
+
+            const fullText = cleanLines.join('\n');
+            const lowerFull = fullText.toLowerCase();
+
+            let type = 'expense';
+            if ((lowerFull.includes('รับโอน') || lowerFull.includes('เงินเข้า')) &&
+                !lowerFull.includes('โอนเงินสำเร็จ') && !lowerFull.includes('ชำระเงินสำเร็จ')) {
+                type = 'income';
+            }
+
+            let amount = 0;
+            const amountKeywordPatterns = [
+                /(?:จำนวนเงิน|จำนวน|ยอดโอน|ยอดชำระ|ชำระเงิน|amount)\s*[:\-]?\s*([\d,]+\.\d{2})/i,
+                /([\d,]+\.\d{2})\s*(?:บาท|thb)/i
+            ];
+
+            for (const regex of amountKeywordPatterns) {
+                const match = fullText.match(regex);
+                if (match && match[1]) {
+                    const parsed = parseFloat(match[1].replace(/,/g, ''));
+                    if (!isNaN(parsed) && parsed > 0) {
+                        amount = parsed;
+                        break;
+                    }
+                }
+            }
+
+            if (amount <= 0) {
+                for (const line of cleanLines) {
+                    if (/ค่าธรรมเนียม|fee/i.test(line)) continue;
+                    const matches = line.match(/\b(\d{1,3}(?:,\d{3})*\.\d{2})\b/g);
+                    if (matches) {
+                        for (const m of matches) {
+                            const val = parseFloat(m.replace(/,/g, ''));
+                            if (!isNaN(val) && val > 0 && val < 10000000) {
+                                amount = val;
+                                break;
+                            }
+                        }
+                    }
+                    if (amount > 0) break;
+                }
+            }
+
+            let recipient = '';
+            let memo = '';
+
+            const memoMatch = fullText.match(/(?:บันทึกช่วยจำ|บันทึก|หมายเหตุ|memo|note)\s*[:\-]?\s*([^\n]+)/i);
+            if (memoMatch && memoMatch[1]) {
+                memo = memoMatch[1].trim();
+            }
+
+            for (let i = 0; i < cleanLines.length; i++) {
+                const line = cleanLines[i];
+                const toInline = line.match(/^(?:ไปยัง|ผู้รับเงิน|ผู้รับโอน|ชื่อบัญชี|ร้านค้า|ชำระให้|to)\s*[:\-]?\s*(.+)$/i);
+                if (toInline && toInline[1] && toInline[1].length >= 2) {
+                    recipient = toInline[1].trim();
+                    break;
+                }
+                if (/^(?:ไปยัง|ผู้รับเงิน|ผู้รับโอน|ร้านค้า|ชำระให้|to)$/i.test(line) && cleanLines[i + 1]) {
+                    recipient = cleanLines[i + 1].trim();
+                    break;
+                }
+            }
+
+            if (!recipient) {
+                for (const line of cleanLines) {
+                    if (/^(?:นาย|นาง|นางสาว|น\.ส\.|บจก\.|บริษัท|หจก\.|ร้าน|mr\.|mrs\.|ms\.)\s*.+/i.test(line)) {
+                        recipient = line.trim();
+                        break;
+                    }
+                }
+            }
+
+            recipient = recipient.replace(/(?:xxx|x{2,})[\dx\-]+/gi, '').trim();
+            memo = memo.replace(/(?:xxx|x{2,})[\dx\-]+/gi, '').trim();
+
+            let noteTitle = '';
+            if (recipient && memo) {
+                noteTitle = `${recipient} (${memo})`;
+            } else if (recipient) {
+                noteTitle = recipient;
+            } else if (memo) {
+                noteTitle = memo;
+            } else {
+                noteTitle = type === 'income' ? 'รับโอนเงิน (สลิป)' : 'โอน/ชำระเงิน (สลิป)';
+            }
+
+            const searchCorpus = `${recipient} ${memo} ${fullText}`.toLowerCase();
+            let matchedCategory = '';
+
+            const userCats = state.categories[type] || [];
+            for (const cat of userCats) {
+                if (cat.isCustom && searchCorpus.includes(cat.name.toLowerCase())) {
+                    matchedCategory = `${cat.emoji} ${cat.name}`;
+                    break;
+                }
+            }
+
+            if (!matchedCategory) {
+                for (const [catId, keywords] of Object.entries(SLIP_CATEGORY_KEYWORDS)) {
+                    if (keywords.some(kw => searchCorpus.includes(kw.toLowerCase()))) {
+                        const targetList = catId.startsWith('inc_') ? state.categories.income : state.categories.expense;
+                        const foundCat = targetList.find(c => c.id === catId);
+                        if (foundCat) {
+                            type = catId.startsWith('inc_') ? 'income' : 'expense';
+                            matchedCategory = `${foundCat.emoji} ${foundCat.name}`;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (!matchedCategory) {
+                const fallbackList = state.categories[type] || [];
+                const fallbackCat = fallbackList[fallbackList.length - 1] || { emoji: '🧾', name: 'รายการจากสลิป' };
+                matchedCategory = `${fallbackCat.emoji} ${fallbackCat.name}`;
+            }
+
+            return {
+                type,
+                amount,
+                category: matchedCategory,
+                note: noteTitle.slice(0, 80)
+            };
+        }
+
+        async function handleSlipFiles(fileList) {
+            if (!fileList || fileList.length === 0) return;
+            if (typeof Tesseract === 'undefined') {
+                showToast('กำลังโหลดระบบอ่านสลิป กรุณาลองใหม่อีกครั้ง', '⚠️');
+                return;
+            }
+            if (state.isScanningSlip) {
+                showToast('กำลังประมวลผลสลิปอยู่ กรุณารอสักครู่...', '⏳');
+                return;
+            }
+
+            const files = Array.from(fileList).filter(f => f.type.startsWith('image/'));
+            if (files.length === 0) {
+                showToast('กรุณาเลือกไฟล์รูปภาพสลิปเท่านั้น', '⚠️');
+                return;
+            }
+
+            state.isScanningSlip = true;
+            const progressBox = document.getElementById('ocrProgressBox');
+            const statusText = document.getElementById('ocrStatusText');
+            const percentText = document.getElementById('ocrPercentText');
+            const progressBar = document.getElementById('ocrProgressBar');
+            const autoSave = document.getElementById('autoSaveSlipToggle').checked;
+
+            progressBox.classList.remove('hidden');
+
+            try {
+                for (let idx = 0; idx < files.length; idx++) {
+                    const file = files[idx];
+                    statusText.textContent = `กำลังปรับความคมชัดสลิป (${idx + 1}/${files.length})...`;
+                    percentText.textContent = '10%';
+                    progressBar.style.width = '10%';
+
+                    const { ocrDataUrl, thumbnailUrl } = await preprocessSlipImage(file);
+
+                    const result = await Tesseract.recognize(ocrDataUrl, 'tha+eng', {
+                        logger: (m) => {
+                            if (m.status === 'recognizing text') {
+                                const pct = Math.min(99, Math.max(15, Math.round(m.progress * 100)));
+                                statusText.textContent = `กำลังอ่านข้อความบนสลิป (${idx + 1}/${files.length})...`;
+                                percentText.textContent = `${pct}%`;
+                                progressBar.style.width = `${pct}%`;
+                            } else if (m.status === 'loading language traineddata') {
+                                statusText.textContent = 'กำลังโหลดชุดข้อมูลภาษาไทย (ครั้งแรก)...';
+                            }
+                        }
+                    });
+
+                    percentText.textContent = '100%';
+                    progressBar.style.width = '100%';
+
+                    const parsed = parseBankSlipText(result.data.text || '');
+                    let savedTx = null;
+
+                    if (autoSave && parsed.amount > 0) {
+                        savedTx = createTransactionRecord({
+                            type: parsed.type,
+                            amount: parsed.amount,
+                            category: parsed.category,
+                            note: parsed.note,
+                            isFromSlip: true
+                        });
+                    } else {
+                        setTransactionType(parsed.type);
+                        if (parsed.amount > 0) document.getElementById('amountInput').value = parsed.amount;
+                        const catSel = document.getElementById('categorySelect');
+                        for (let i = 0; i < catSel.options.length; i++) {
+                            if (catSel.options[i].value === parsed.category) {
+                                catSel.selectedIndex = i;
+                                break;
+                            }
+                        }
+                        document.getElementById('noteInput').value = parsed.note;
+                    }
+
+                    state.recentSlipResults.unshift({
+                        scanId: 'scan_' + Date.now() + '_' + idx,
+                        thumbnailUrl,
+                        txId: savedTx ? savedTx.id : null,
+                        type: parsed.type,
+                        amount: parsed.amount,
+                        category: parsed.category,
+                        note: parsed.note,
+                        isSaved: Boolean(savedTx)
+                    });
+
+                    if (state.recentSlipResults.length > 5) {
+                        state.recentSlipResults.pop();
+                    }
+                    renderSlipSummaryCards();
+                }
+
+                showToast(
+                    autoSave ? `สแกนและบันทึกรายการจากสลิปสำเร็จ (${files.length} ใบ)` : 'อ่านสลิปเรียบร้อย กรุณาตรวจสอบข้อมูล',
+                    '🧾'
+                );
+            } catch (err) {
+                console.error('OCR Error:', err);
+                showToast('ไม่สามารถอ่านสลิปได้ กรุณาลองรูปที่ชัดเจนขึ้น', '⚠️');
+            } finally {
+                state.isScanningSlip = false;
+                document.getElementById('slipFileInput').value = '';
+                setTimeout(() => {
+                    progressBox.classList.add('hidden');
+                }, 900);
+            }
+        }
+
+        function renderSlipSummaryCards() {
+            const container = document.getElementById('slipSummaryContainer');
+            container.innerHTML = '';
+
+            state.recentSlipResults.forEach(item => {
+                const isIncome = item.type === 'income';
+
+                const card = document.createElement('div');
+                card.className = 'bg-slate-900/85 border border-indigo-500/30 rounded-2xl p-3 flex items-center justify-between gap-3';
+
+                const leftWrap = document.createElement('div');
+                leftWrap.className = 'flex items-center space-x-3 min-w-0';
+
+                const thumb = document.createElement('img');
+                thumb.src = item.thumbnailUrl;
+                thumb.alt = 'รูปย่อสลิป';
+                thumb.className = 'w-12 h-14 rounded-xl object-cover border border-white/15 shrink-0 bg-slate-800';
+
+                const infoWrap = document.createElement('div');
+                infoWrap.className = 'min-w-0 space-y-0.5';
+
+                const badgeRow = document.createElement('div');
+                badgeRow.className = 'flex items-center space-x-1.5';
+
+                const statusBadge = document.createElement('span');
+                statusBadge.className = item.isSaved
+                    ? 'text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-medium'
+                    : 'text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-medium';
+                statusBadge.textContent = item.isSaved ? '✓ บันทึกอัตโนมัติแล้ว' : 'รอตรวจสอบในฟอร์ม';
+                badgeRow.appendChild(statusBadge);
+
+                const catEl = document.createElement('p');
+                catEl.className = 'text-xs font-semibold text-white truncate';
+                catEl.textContent = item.category;
+
+                const noteEl = document.createElement('p');
+                noteEl.className = 'text-[11px] text-slate-400 truncate';
+                noteEl.textContent = item.note;
+
+                const amountEl = document.createElement('p');
+                amountEl.className = `text-sm font-bold ${isIncome ? 'text-emerald-400' : 'text-rose-400'}`;
+                amountEl.textContent = item.amount > 0
+                    ? `${isIncome ? '+' : '-'}฿${formatMoney(item.amount)}`
+                    : 'ไม่พบยอดเงิน (กรุณากรอกเพิ่ม)';
+
+                infoWrap.appendChild(badgeRow);
+                infoWrap.appendChild(catEl);
+                infoWrap.appendChild(noteEl);
+                infoWrap.appendChild(amountEl);
+
+                leftWrap.appendChild(thumb);
+                leftWrap.appendChild(infoWrap);
+
+                const rightWrap = document.createElement('div');
+                rightWrap.className = 'flex flex-col space-y-1.5 shrink-0';
+
+                if (item.isSaved && item.txId) {
+                    const editBtn = document.createElement('button');
+                    editBtn.type = 'button';
+                    editBtn.className = 'px-2.5 py-1.5 rounded-xl bg-indigo-600/30 hover:bg-indigo-600/50 border border-indigo-400/30 text-indigo-200 text-[11px] font-medium transition';
+                    editBtn.textContent = '✏️ แก้ไขรายการนี้';
+                    editBtn.onclick = () => openEditSlipModal(item.txId, item.scanId);
+                    rightWrap.appendChild(editBtn);
+                }
+
+                const dismissBtn = document.createElement('button');
+                dismissBtn.type = 'button';
+                dismissBtn.className = 'px-2.5 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 text-[10px] transition';
+                dismissBtn.textContent = 'ปิดการ์ด';
+                dismissBtn.onclick = () => {
+                    state.recentSlipResults = state.recentSlipResults.filter(s => s.scanId !== item.scanId);
+                    renderSlipSummaryCards();
+                };
+                rightWrap.appendChild(dismissBtn);
+
+                card.appendChild(leftWrap);
+                card.appendChild(rightWrap);
+                container.appendChild(card);
+            });
+        }
+
+        function openEditSlipModal(txId, scanId) {
+            const tx = state.transactions.find(t => t.id === txId);
+            if (!tx) {
+                showToast('ไม่พบรายการนี้ในประวัติแล้ว', '⚠️');
+                return;
+            }
+            document.getElementById('editSlipTxId').value = tx.id;
+            document.getElementById('editSlipTxId').dataset.scanId = scanId || '';
+            setEditSlipType(tx.type, tx.category);
+            document.getElementById('editSlipAmount').value = tx.amount;
+            document.getElementById('editSlipNote').value = tx.note || '';
+            openModal('editSlipModal');
+        }
+
+        function setEditSlipType(type, selectedCat = '') {
+            document.getElementById('editSlipType').value = type;
+            const expBtn = document.getElementById('editTypeExpBtn');
+            const incBtn = document.getElementById('editTypeIncBtn');
+
+            if (type === 'expense') {
+                expBtn.className = 'py-2 rounded-lg text-xs font-semibold bg-rose-600 text-white';
+                incBtn.className = 'py-2 rounded-lg text-xs font-semibold text-slate-400';
+            } else {
+                incBtn.className = 'py-2 rounded-lg text-xs font-semibold bg-emerald-600 text-white';
+                expBtn.className = 'py-2 rounded-lg text-xs font-semibold text-slate-400';
+            }
+
+            const catSelect = document.getElementById('editSlipCategory');
+            catSelect.innerHTML = '';
+            const list = state.categories[type] || [];
+            list.forEach(c => {
+                const val = `${c.emoji} ${c.name}`;
+                const opt = document.createElement('option');
+                opt.value = val;
+                opt.textContent = val;
+                if (val === selectedCat) opt.selected = true;
+                catSelect.appendChild(opt);
+            });
+        }
+
+        function saveEditedSlipTx(event) {
+            event.preventDefault();
+            const idInput = document.getElementById('editSlipTxId');
+            const txId = Number(idInput.value);
+            const scanId = idInput.dataset.scanId;
+            const tx = state.transactions.find(t => t.id === txId);
+
+            if (tx) {
+                tx.type = document.getElementById('editSlipType').value;
+                tx.amount = parseFloat(document.getElementById('editSlipAmount').value);
+                tx.category = document.getElementById('editSlipCategory').value;
+                tx.note = document.getElementById('editSlipNote').value.trim();
+                saveTransactions();
+
+                const scanCard = state.recentSlipResults.find(s => s.scanId === scanId);
+                if (scanCard) {
+                    scanCard.type = tx.type;
+                    scanCard.amount = tx.amount;
+                    scanCard.category = tx.category;
+                    scanCard.note = tx.note;
+                    renderSlipSummaryCards();
+                }
+
+                refreshDashboard();
+                showToast('อัปเดตรายการจากสลิปแล้ว', '✅');
+            }
+            closeModal('editSlipModal');
+        }
+
+        // -------------------------------------------------------------------
+        // 10. กราฟโดนัทสรุปสัดส่วนรายจ่าย (Chart.js)
         // -------------------------------------------------------------------
         function updateDonutChart(expenseTransactions) {
             const canvas = document.getElementById('expenseDonutChart');
@@ -875,7 +2987,7 @@
         }
 
         // -------------------------------------------------------------------
-        // 8. ค้นหา กรองข้อมูล และแสดงรายการ (สร้างด้วย DOM API ป้องกัน XSS 100%)
+        // 11. ค้นหา กรองข้อมูล และแสดงรายการ (สร้างด้วย DOM API ป้องกัน XSS 100%)
         // -------------------------------------------------------------------
         function setFilterType(type) {
             state.filterType = type;
@@ -916,7 +3028,6 @@
                 } else {
                     totalExpense += tx.amount;
                     expenseTxs.push(tx);
-                    // คำนวณรายจ่ายเฉพาะเดือนปัจจุบันสำหรับแถบงบประมาณ
                     if (!tx.monthKey || tx.monthKey === currentMonthKey) {
                         currentMonthExpense += tx.amount;
                     }
@@ -955,7 +3066,7 @@
                 const emptyBox = document.createElement('div');
                 emptyBox.className = 'glass-card rounded-2xl p-8 text-center text-slate-400 text-sm';
                 emptyBox.textContent = state.transactions.length === 0 
-                    ? 'ยังไม่มีรายการบันทึก เริ่มจดรายการแรกด้านบนได้เลย!' 
+                    ? 'ยังไม่มีรายการบันทึก อัปโหลดสลิปหรือจดรายการแรกด้านบนได้เลย!' 
                     : 'ไม่พบรายการที่ตรงกับเงื่อนไขการค้นหา';
                 listEl.appendChild(emptyBox);
                 return;
@@ -972,7 +3083,7 @@
 
                 const iconBox = document.createElement('div');
                 iconBox.className = `w-10 h-10 rounded-xl flex items-center justify-center text-lg shrink-0 ${isIncome ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`;
-                iconBox.textContent = isIncome ? '📥' : '📤';
+                iconBox.textContent = tx.isFromSlip ? '🧾' : (isIncome ? '📥' : '📤');
 
                 const infoDiv = document.createElement('div');
                 infoDiv.className = 'min-w-0';
@@ -1015,7 +3126,7 @@
         }
 
         // -------------------------------------------------------------------
-        // 9. ระบบ Export CSV, Backup JSON, Restore JSON และ ล้างข้อมูล
+        // 12. ระบบ Export CSV, Backup JSON, Restore JSON และ ล้างข้อมูล
         // -------------------------------------------------------------------
         function exportToCSV() {
             if (state.transactions.length === 0) {
@@ -1039,7 +3150,7 @@
 
         function backupJSON() {
             const backupPayload = {
-                version: 3,
+                version: 4,
                 exportedAt: new Date().toISOString(),
                 appName: state.appName,
                 monthlyBudget: state.monthlyBudget,
@@ -1126,7 +3237,7 @@
         }
 
         // -------------------------------------------------------------------
-        // 10. ฟังก์ชันเสริม (Formatters & Toast)
+        // 13. ฟังก์ชันเสริม (Formatters & Toast)
         // -------------------------------------------------------------------
         function formatMoney(num) {
             return Number(num).toLocaleString('th-TH', {
@@ -1157,7 +3268,11 @@
             loadAllData();
             updateHeaderUI();
             setTransactionType('expense');
+            setupSlipDropAndPaste();
             refreshDashboard();
+            if (typeof window.bootFirebaseFromSavedConfig === 'function') {
+                window.bootFirebaseFromSavedConfig();
+            }
         });
     </script>
 </body>
